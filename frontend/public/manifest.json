@@ -1,0 +1,22 @@
+{
+  "name": "享聊 - AI 智能聊天",
+  "short_name": "享聊",
+  "description": "基于 DeepSeek 的 AI 即时聊天软件，支持长记忆和多角色",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

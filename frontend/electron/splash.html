@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>启动中...</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #6366f1 100%);
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    overflow: hidden;
+    -webkit-app-region: drag;
+  }
+
+  .container {
+    text-align: center;
+    color: white;
+  }
+
+  .logo {
+    width: 72px;
+    height: 72px;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(12px);
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 24px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  }
+
+  .logo span {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    letter-spacing: -0.3px;
+  }
+
+  p {
+    font-size: 13px;
+    opacity: 0.75;
+    margin-bottom: 32px;
+  }
+
+  .loader {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+  }
+
+  .loader span {
+    width: 6px;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 50%;
+    animation: bounce 1.2s infinite ease-in-out;
+  }
+
+  .loader span:nth-child(1) { animation-delay: 0s; }
+  .loader span:nth-child(2) { animation-delay: 0.15s; }
+  .loader span:nth-child(3) { animation-delay: 0.3s; }
+
+  @keyframes bounce {
+    0%, 80%, 100% { transform: translateY(0); opacity: 0.5; }
+    40% { transform: translateY(-8px); opacity: 1; }
+  }
+
+  .version {
+    position: absolute;
+    bottom: 20px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 11px;
+    opacity: 0.4;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="logo">
+    <span>QA</span>
+  </div>
+  <h1>校园问答助手</h1>
+  <p>AI 知识库正在启动...</p>
+  <div class="loader">
+    <span></span><span></span><span></span>
+  </div>
+</div>
+<div class="version">v2.0.0 Electron</div>
+</body>
+</html>
