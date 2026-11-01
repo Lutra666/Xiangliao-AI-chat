@@ -19,8 +19,6 @@ const ChatMessageList = memo(forwardRef(function ChatMessageList(
   _ref
 ) {
   const messages = useChatStore((s) => s.messages);
-  const loading = useChatStore((s) => s.loading);
-  const streaming = useChatStore((s) => s.streaming);
   const character = useChatStore((s) => s.character);
   const user = useAppStore((s) => s.user);
   const userAvatar = user?.avatar_url || '';
@@ -62,7 +60,7 @@ const ChatMessageList = memo(forwardRef(function ChatMessageList(
         <StreamingCursor />
         <div ref={bottomRef} className="h-4" />
 
-        <NewMessageToast show={showNewMsg && !loading} onClick={onScrollToBottom} />
+        <NewMessageToast show={showNewMsg} onClick={onScrollToBottom} />
       </div>
     </div>
   );

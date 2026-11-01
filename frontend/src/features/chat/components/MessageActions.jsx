@@ -34,7 +34,7 @@ export default function MessageActions({
   };
 
   return (
-    <div className="flex items-center gap-0.5 mt-1.5 ml-1 opacity-0 group-hover:opacity-100 transition-opacity duration-normal">
+    <div className="flex items-center gap-0.5 mt-1.5 ml-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity duration-normal">
       {createdAt && (
         <span className="inline-flex items-center gap-0.5 text-[10px] text-text-subtle px-1">
           <Clock className="w-2.5 h-2.5" />

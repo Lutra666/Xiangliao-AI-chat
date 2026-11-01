@@ -1,7 +1,17 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { readChatStream } from '../utils/stream';
 import { useChatStore, genMsgId } from '../store/useChatStore';
 import { useAppStore } from '../store/useAppStore';
+
+function finishWithNotice(id, notice) {
+  const state = useChatStore.getState();
+  const message = state.messages.find((item) => item.id === id);
+  if (!message) return;
+  state.updateMessage(id, {
+    content: [message.content, notice].filter(Boolean).join('\n\n'),
+    streaming: false,
+  });
+}
 
 /**
  * 聊天流式 Hook —— 把 ChatPage 的 SSE 逻辑全部抽出来。
@@ -19,28 +29,18 @@ import { useAppStore } from '../store/useAppStore';
  *   - 会话历史加载（useHistory）
  */
 export function useChatStream() {
-  const store = useChatStore();
+  const store = useChatStore.getState();
   const abortRef = useRef(null);
+  const character = useChatStore((state) => state.character);
+  const loading = useChatStore((state) => state.loading);
+  const streaming = useChatStore((state) => Boolean(state.streaming));
+  const user = useAppStore((state) => state.user);
 
-  const {
-    sessionId,
-    messages,
-    character,
-    characterId,
-    rolePrefix,
-    customResponsePrompt,
-    loading,
-    streaming,
-  } = useChatStore();
-
-  const user = useAppStore((s) => s.user);
-
-  // 角色名映射（与原 ChatPage 逻辑一致）
-  const roleNames = {
+  const roleNames = useMemo(() => ({
     ai: character?.name || 'AI',
     user: user?.display_name || '我',
     narrator: '旁白',
-  };
+  }), [character?.name, user?.display_name]);
 
   // ── 等待分阶段：3s 升级"组织语言"，10s 升级"耐心等待" ──
   useEffect(() => {
@@ -160,21 +160,11 @@ ${ctx ? `\n对话上下文：\n${ctx}` : ''}`;
                 useChatStore
                   .getState()
                   .updateMessage(msgId, { id: event.message_id || msgId, streaming: false }),
-              onError: (msg) =>
-                useChatStore.getState().updateMessage(msgId, {
-                  content: `❌ ${msg}`,
-                  streaming: false,
-                }),
+              onError: (msg) => finishWithNotice(msgId, `❌ ${msg}`),
             }
           );
         } catch (err) {
-          if (err.name !== 'AbortError') {
-            useChatStore.getState().appendMessage({
-              id: genMsgId(),
-              role: 'assistant',
-              content: '润色失败，请重试',
-            });
-          }
+          finishWithNotice(msgId, err.name === 'AbortError' ? '已停止生成' : '❌ 润色失败，请重试');
         } finally {
           useChatStore.getState().setLoading(false);
           useChatStore.getState().setStreaming('');
@@ -252,20 +242,18 @@ ${ctx ? `\n对话上下文：\n${ctx}` : ''}`;
               });
             },
             onError: (msg) => {
-              const st = useChatStore.getState();
-              st.updateMessage(aiMsgId, { content: `❌ ${msg}`, streaming: false });
+              finishWithNotice(aiMsgId, `❌ ${msg}`);
             },
           }
         );
         useChatStore.getState().setStreaming('');
       } catch (err) {
-        if (err.name === 'AbortError') return;
+        if (err.name === 'AbortError') {
+          finishWithNotice(aiMsgId, '已停止生成');
+          return;
+        }
         const msg = err?.message || 'AI 服务暂时不可用，请稍后重试';
-        useChatStore.getState().appendMessage({
-          id: genMsgId(),
-          role: 'assistant',
-          content: `❌ ${msg}`,
-        });
+        finishWithNotice(aiMsgId, `❌ ${msg}，可点击重试`);
         // 401 时清除登录态，引导重新登录
         if (msg.includes('登录已过期') || msg.includes('401')) {
           useAppStore.getState().clearAuth();
@@ -273,6 +261,7 @@ ${ctx ? `\n对话上下文：\n${ctx}` : ''}`;
         }
       } finally {
         useChatStore.getState().setLoading(false);
+        useChatStore.getState().setStreaming('');
         useChatStore.getState().setWaitStage(0);
         abortRef.current = null;
       }
@@ -335,23 +324,11 @@ ${ctx ? `\n对话上下文：\n${ctx}` : ''}`;
               useChatStore
                 .getState()
                 .updateMessage(msgId, { id: event.message_id || msgId, streaming: false }),
-            onError: (msg) =>
-              useChatStore.getState().updateMessage(msgId, {
-                content: `❌ ${msg}`,
-                streaming: false,
-              }),
+            onError: (msg) => finishWithNotice(msgId, `❌ ${msg}`),
           }
         );
       } catch (err) {
-        if (err.name === 'AbortError') {
-          // 用户主动取消，静默
-        } else {
-          useChatStore.getState().appendMessage({
-            id: genMsgId(),
-            role: msgRole,
-            content: '生成失败，请重试',
-          });
-        }
+        finishWithNotice(msgId, err.name === 'AbortError' ? '已停止生成' : '❌ 生成失败，请重试');
       } finally {
         useChatStore.getState().setLoading(false);
         abortRef.current = null;

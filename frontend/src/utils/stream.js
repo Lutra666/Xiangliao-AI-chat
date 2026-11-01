@@ -28,8 +28,9 @@ export async function readChatStream(prompt, sessionId, opts, handlers) {
   try {
     response = await streamChat(prompt, sessionId, opts || {});
   } catch (e) {
-    // fetch 网络层错误（DNS / 连接拒绝 / CORS 等）
-    throw new Error(friendlyError(0, e?.message || 'network'));
+    // Preserve cancellation so callers can distinguish it from network errors.
+    if (e?.name === 'AbortError') throw e;
+    throw new Error(friendlyError(0, e?.message || 'network'), { cause: e });
   }
 
   // 检查 HTTP 状态码，非 2xx 时给出明确错误而非笼统的"服务不可用"
@@ -89,6 +90,7 @@ export async function readChatStream(prompt, sessionId, opts, handlers) {
     }
     if (errored) break;
   }
+  if (!done && !errored) throw new Error('连接中断，请重试');
   return { fullText, done };
 }
 

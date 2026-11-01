@@ -7,7 +7,7 @@ import {
   useImperativeHandle,
   memo,
 } from 'react';
-import { Smile, ArrowRight } from 'lucide-react';
+import { Smile, ArrowRight, Square } from 'lucide-react';
 import { cn } from '../../../lib/cn';
 import { IconButton } from '../../../components/ui';
 import EmojiPicker from '../../../components/EmojiPicker';
@@ -122,6 +122,7 @@ const ChatInputBar = forwardRef(function ChatInputBar(
             <textarea
               ref={textareaRef}
               rows={1}
+              aria-label="输入消息"
               value={input}
               onChange={handleChange}
               onKeyDown={handleKeyDown}
@@ -146,7 +147,11 @@ const ChatInputBar = forwardRef(function ChatInputBar(
               </IconButton>
               {showEmoji && <EmojiPicker onSelect={handleEmoji} onClose={() => setShowEmoji(false)} />}
 
-              <IconButton
+              {loading ? (
+                <IconButton label="停止生成" size="iconSm" variant="ghost" onClick={onAbort}>
+                  <Square className="w-4 h-4" />
+                </IconButton>
+              ) : <IconButton
                 label="发送"
                 size="iconSm"
                 variant={input.trim() && !loading ? 'primary' : 'ghost'}
@@ -159,13 +164,13 @@ const ChatInputBar = forwardRef(function ChatInputBar(
                 )}
               >
                 <ArrowRight className="w-4 h-4" />
-              </IconButton>
+              </IconButton>}
             </div>
           </div>
         </div>
 
         <p className="text-center text-[10px] text-text-subtle mt-2.5 select-none">
-          AI 生成内容仅供参考 · DeepSeek V4 Flash 驱动 · 1M 上下文
+          Enter 发送 · Shift + Enter 换行 · AI 生成内容仅供参考
         </p>
       </div>
     </div>

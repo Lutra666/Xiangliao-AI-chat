@@ -115,7 +115,7 @@ function ChatBubble({
                     e.target.style.height = Math.min(e.target.scrollHeight, 240) + 'px';
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
+                    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                       e.preventDefault();
                       submitEdit();
                     } else if (e.key === 'Escape') {

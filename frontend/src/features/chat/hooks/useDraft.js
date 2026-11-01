@@ -40,6 +40,11 @@ export function useDraft(sessionId) {
     pendingRef.current = null;
   }, []);
 
+  useEffect(() => {
+    window.addEventListener('pagehide', flushDraft);
+    return () => window.removeEventListener('pagehide', flushDraft);
+  }, [flushDraft]);
+
   // 切换会话时恢复草稿
   useEffect(() => {
     try {

@@ -26,7 +26,6 @@ export default function ChatPage() {
 
   // ── stores（订阅需要响应式更新的字段）──
   const sessionId = useChatStore((s) => s.sessionId);
-  const streaming = useChatStore((s) => s.streaming);
   const characterId = useAppStore((s) => s.activeCharacterId);
   const setActiveCharacterId = useAppStore((s) => s.setActiveCharacterId);
 
@@ -46,9 +45,9 @@ export default function ChatPage() {
   const { sendMessage, retryMessage, editAndResend, abort, autoGenerateRole, roleNames } =
     useChatStream();
 
-  // ── 智能滚动（订阅 streaming，流式输出时持续滚到底；messages 由 ChatMessageList 内部订阅）──
+  // ── 智能滚动 ──
   const { scrollContainerRef, bottomRef, showNewMsg, headerVisible, scrollToBottom } =
-    useAutoScroll([streaming]);
+    useAutoScroll();
 
   // ── 输入框命令式 ref ──
   const inputBarRef = useRef(null);

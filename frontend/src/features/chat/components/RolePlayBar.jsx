@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { Pencil } from 'lucide-react';
 import { cn } from '../../../lib/cn';
 import { useChatStore } from '../../../store/useChatStore';
@@ -9,11 +9,11 @@ export default function RolePlayBar({ onInsertPrefix, onAutoGenerate }) {
   const [editPrompt, setEditPrompt] = useState(
     () => localStorage.getItem('quick_response_prompt') || ''
   );
-  const roleClickTimers = useRef({});
 
   const character = useChatStore((s) => s.character);
   const rolePrefix = useChatStore((s) => s.rolePrefix);
   const setRolePrefix = useChatStore((s) => s.setRolePrefix);
+  const loading = useChatStore((s) => s.loading);
   const setCustomResponsePrompt = useChatStore((s) => s.setCustomResponsePrompt);
   const user = useAppStore((s) => s.user);
 
@@ -21,23 +21,6 @@ export default function RolePlayBar({ onInsertPrefix, onAutoGenerate }) {
     ai: character?.name || 'AI',
     user: user?.display_name || '我',
     narrator: '旁白',
-  };
-
-  // 单击/双击检测：单击插入前缀，双击 AI 代写
-  const handleClick = (role) => (e) => {
-    const now = Date.now();
-    const prev = roleClickTimers.current[role] || 0;
-    if (now - prev < 350) {
-      roleClickTimers.current[role] = 0;
-      setRolePrefix('');
-      onAutoGenerate?.(role, e);
-    } else {
-      roleClickTimers.current[role] = now;
-      onInsertPrefix?.(role, e);
-      setTimeout(() => {
-        roleClickTimers.current[role] = 0;
-      }, 400);
-    }
   };
 
   const labels = {
@@ -54,14 +37,15 @@ export default function RolePlayBar({ onInsertPrefix, onAutoGenerate }) {
           return (
             <button
               key={role}
-              onClick={handleClick(role)}
+              onClick={() => onInsertPrefix?.(role)}
+              aria-pressed={isActive}
               className={cn(
                 'px-2.5 py-1 rounded-full text-[11px] font-medium transition-all duration-fast cursor-pointer',
                 isActive
                   ? 'bg-brand text-brand-on shadow-sm'
                   : 'bg-surface text-text-muted border border-border hover:border-border-brand hover:text-brand'
               )}
-              title={`单击：以${roleNames[role] || ''}身份发言 | 双击：AI自动生成`}
+              title={`以${roleNames[role] || ''}身份发言`}
             >
               {labels[role]}
             </button>
@@ -69,9 +53,14 @@ export default function RolePlayBar({ onInsertPrefix, onAutoGenerate }) {
         })}
 
         {rolePrefix && (
-          <span className="text-[10px] text-text-subtle animate-pulse">
-            已激活 · 双击让AI代写
-          </span>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => { const role = rolePrefix; setRolePrefix(''); onAutoGenerate?.(role); }}
+            className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-brand-soft text-brand border border-border-brand disabled:opacity-50"
+          >
+            AI 代写{roleNames[rolePrefix]}
+          </button>
         )}
 
         <button

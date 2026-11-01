@@ -15,7 +15,7 @@ export default function NewMessageToast({ show, onClick }) {
       )}
     >
       <ArrowDown className="w-3.5 h-3.5" />
-      新消息
+      回到最新消息
     </button>
   );
 }
