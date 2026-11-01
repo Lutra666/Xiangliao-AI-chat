@@ -4,9 +4,7 @@ export function useAutoScroll() {
   const scrollContainerRef = useRef(null);
   const bottomRef = useRef(null);
   const autoScrollRef = useRef(true);
-  const lastScrollY = useRef(0);
   const [showNewMsg, setShowNewMsg] = useState(false);
-  const [headerVisible, setHeaderVisible] = useState(true);
 
   useEffect(() => {
     const el = scrollContainerRef.current;
@@ -14,9 +12,6 @@ export function useAutoScroll() {
     if (!el || !content) return;
     const onScroll = () => {
       const y = el.scrollTop;
-      const dy = y - lastScrollY.current;
-      if (Math.abs(dy) > 10) setHeaderVisible(dy < 0);
-      lastScrollY.current = y;
       const atBottom = el.scrollHeight - y - el.clientHeight < 100;
       autoScrollRef.current = atBottom;
       if (atBottom) setShowNewMsg(false);
@@ -42,5 +37,5 @@ export function useAutoScroll() {
     if (el) el.scrollTop = el.scrollHeight;
   }, []);
 
-  return { scrollContainerRef, bottomRef, showNewMsg, headerVisible, scrollToBottom };
+  return { scrollContainerRef, bottomRef, showNewMsg, scrollToBottom };
 }

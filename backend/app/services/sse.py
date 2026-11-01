@@ -32,10 +32,11 @@ def sse_usage(context_tokens: int, answer_tokens: int, session_total: int) -> st
     })
 
 
-def sse_done(session_id: int, message_id: int, sources: list) -> str:
+def sse_done(session_id: int, message_id: int, sources: list, user_message_id: int = None) -> str:
     return sse_event("done", {
         "session_id": session_id,
         "message_id": message_id,
+        "user_message_id": user_message_id,
         "sources": sources or [],
     })
 

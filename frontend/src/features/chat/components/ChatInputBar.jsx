@@ -45,7 +45,7 @@ const ChatInputBar = forwardRef(function ChatInputBar(
         setInput((prev) => prefix + prev.replace(/^\/[^\n:]*: /, ''));
       },
       quickSend: (text) => {
-        setInput('');
+        if (useChatStore.getState().loading) return;
         onSend(text);
       },
       focus: () => textareaRef.current?.focus(),
@@ -102,23 +102,16 @@ const ChatInputBar = forwardRef(function ChatInputBar(
   );
 
   return (
-    <div className="px-3 md:px-5 pb-3 md:pb-5 shrink-0">
+    <div className="px-3 md:px-5 pb-3 md:pb-5 shrink-0" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}>
       {/* 浮动输入卡片 */}
       <div className="max-w-3xl mx-auto">
         <RolePlayBar onInsertPrefix={onInsertPrefix} onAutoGenerate={onAutoGenerate} />
 
         <div className="relative group">
-          {/* 柔光效果 —— 仅 focus 时显示，blur 已移除以避免长页面下 GPU 重绘开销 */}
-          <div
-            className="absolute -inset-0.5 bg-gradient-to-r from-brand/5 via-rose-300/10 to-brand/5
-              rounded-2xl opacity-0 group-focus-within:opacity-100 transition-opacity duration-slow pointer-events-none"
-          />
-
-          <div
-            className="relative bg-surface border border-border rounded-2xl shadow-md
-              group-focus-within:border-border-brand group-focus-within:shadow-lg
-              transition-all duration-normal"
-          >
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-brand/5 via-rose-300/10 to-brand/5
+              rounded-2xl opacity-0 group-focus-within:opacity-100 transition-opacity duration-slow pointer-events-none" />
+          <div className="chat-composer-surface relative bg-surface border border-border-strong rounded-2xl shadow-lg
+              group-focus-within:border-border-brand group-focus-within:shadow-lg transition-all duration-normal">
             <textarea
               ref={textareaRef}
               rows={1}
@@ -131,8 +124,8 @@ const ChatInputBar = forwardRef(function ChatInputBar(
                   ? 'AI 正在回复中，你可以先输入下一条...'
                   : `和 ${character?.name || '享聊'} 聊点什么吧...`
               }
-              className="relative w-full bg-transparent border-0 rounded-2xl pl-4 pr-14 py-3.5
-                text-[14px] leading-relaxed text-text placeholder:text-text-subtle
+              className="relative w-full bg-transparent border-0 rounded-2xl pl-4 pr-24 py-3.5
+                text-[15px] leading-relaxed text-text placeholder:text-text-subtle
                 focus:outline-none resize-none"
             />
 
@@ -146,30 +139,20 @@ const ChatInputBar = forwardRef(function ChatInputBar(
                 <Smile className="w-5 h-5" />
               </IconButton>
               {showEmoji && <EmojiPicker onSelect={handleEmoji} onClose={() => setShowEmoji(false)} />}
-
               {loading ? (
                 <IconButton label="停止生成" size="iconSm" variant="ghost" onClick={onAbort}>
                   <Square className="w-4 h-4" />
                 </IconButton>
-              ) : <IconButton
-                label="发送"
-                size="iconSm"
-                variant={input.trim() && !loading ? 'primary' : 'ghost'}
-                disabled={!input.trim() || loading}
-                onClick={handleSend}
-                className={cn(
-                  input.trim() &&
-                    !loading &&
-                    'bg-gradient-to-br from-brand to-rose-400 hover:shadow-glow hover:scale-105 active:scale-95'
-                )}
-              >
+              ) : <IconButton label="发送" size="iconSm" variant={input.trim() && !loading ? 'primary' : 'ghost'}
+                disabled={!input.trim() || loading} onClick={handleSend}
+                className={cn(input.trim() && !loading && 'bg-gradient-to-br from-brand to-rose-400 hover:shadow-glow hover:scale-105 active:scale-95')}>
                 <ArrowRight className="w-4 h-4" />
               </IconButton>}
             </div>
           </div>
         </div>
 
-        <p className="text-center text-[10px] text-text-subtle mt-2.5 select-none">
+        <p className="text-center text-[11px] text-text-muted mt-2.5 select-none">
           Enter 发送 · Shift + Enter 换行 · AI 生成内容仅供参考
         </p>
       </div>

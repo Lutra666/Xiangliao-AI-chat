@@ -5,10 +5,12 @@ import ChatHeader from '../features/chat/components/ChatHeader';
 import ChatMessageList from '../features/chat/components/ChatMessageList';
 import ChatInputBar from '../features/chat/components/ChatInputBar';
 import { IconButton, Tooltip } from '../components/ui';
-import { useChatStream, useCharacters, useHistory } from '../hooks';
+import { useChatStream, useCharacters, useHistory, useInheritSession } from '../hooks';
 import { useAutoScroll } from '../features/chat/hooks/useAutoScroll';
 import { useChatStore } from '../store/useChatStore';
 import { useAppStore } from '../store/useAppStore';
+import { recallMessage } from '../utils/api';
+import { useQueryClient } from '@tanstack/react-query';
 
 /**
  * 性能优化（解决长上下文下输入法卡顿）：
@@ -20,12 +22,15 @@ import { useAppStore } from '../store/useAppStore';
  */
 export default function ChatPage() {
   const [showSidebar, setShowSidebar] = useState(false);
+  const queryClient = useQueryClient();
+  const recallingRef = useRef(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem('sidebar_collapsed') === '1'; } catch { return false; }
   });
 
   // ── stores（订阅需要响应式更新的字段）──
   const sessionId = useChatStore((s) => s.sessionId);
+  const memoryPausedAfterRecall = useChatStore((s) => s.memoryPausedAfterRecall);
   const characterId = useAppStore((s) => s.activeCharacterId);
   const setActiveCharacterId = useAppStore((s) => s.setActiveCharacterId);
 
@@ -46,7 +51,7 @@ export default function ChatPage() {
     useChatStream();
 
   // ── 智能滚动 ──
-  const { scrollContainerRef, bottomRef, showNewMsg, headerVisible, scrollToBottom } =
+  const { scrollContainerRef, bottomRef, showNewMsg, scrollToBottom } =
     useAutoScroll();
 
   // ── 输入框命令式 ref ──
@@ -54,11 +59,13 @@ export default function ChatPage() {
 
   // ── 历史加载 ──
   const { data: historyData } = useHistory(sessionId);
+  const inheritSession = useInheritSession();
   useEffect(() => {
     if (historyData) {
       useChatStore.getState().loadHistoryInto({
         messages: historyData.messages,
         title: historyData.title,
+        memory_paused_after_recall: historyData.memoryPausedAfterRecall,
         total_tokens_used: historyData.totalTokens,
       });
       if (historyData.characterId) setActiveCharacterId(historyData.characterId);
@@ -82,6 +89,33 @@ export default function ChatPage() {
     setShowSidebar(false);
     scrollToBottom();
   }, [abort, scrollToBottom]);
+
+  const handleBranch = useCallback(async (messageId) => {
+    if (!sessionId || inheritSession.isPending || useChatStore.getState().loading) return;
+    try {
+      const result = await inheritSession.mutateAsync({ sessionId, messageId });
+      handleSelect(result.new_session_id);
+    } catch (error) {
+      alert(error.message || '创建剧情分支失败，请重试');
+    }
+  }, [sessionId, inheritSession, handleSelect]);
+
+  const handleRecall = useCallback(async (messageId) => {
+    if (recallingRef.current || useChatStore.getState().loading) return;
+    recallingRef.current = true;
+    try {
+      const result = await recallMessage(messageId);
+      if (useChatStore.getState().sessionId === result.session_id) {
+        useChatStore.getState().updateMessage(messageId, { recalled: true, content: '' });
+        useChatStore.setState({ memoryPausedAfterRecall: true });
+      }
+      await queryClient.invalidateQueries({ queryKey: ['history', result.session_id] });
+    } catch (error) {
+      alert(error.message || '撤回失败，请重试');
+    } finally {
+      recallingRef.current = false;
+    }
+  }, [queryClient]);
 
   const handleDeleteSession = useCallback(
     (deletedId) => {
@@ -141,7 +175,7 @@ export default function ChatPage() {
   }, []);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-bg transition-colors duration-slower">
+    <div className="flex h-screen h-[100dvh] overflow-hidden bg-bg transition-colors duration-slower">
       {showSidebar && (
         <div
           className="md:hidden fixed inset-0 bg-overlay backdrop-blur-sm z-30 animate-in fade-in duration-fast"
@@ -152,7 +186,7 @@ export default function ChatPage() {
       <div
         className={`${showSidebar ? 'translate-x-0' : '-translate-x-full'} ${
           sidebarCollapsed ? 'md:hidden' : 'md:translate-x-0'
-        } fixed md:static z-40 h-screen transition-transform duration-slow ease-out`}
+        } fixed md:static z-40 h-full transition-transform duration-slow ease-out`}
       >
         <Sidebar
           activeId={sessionId}
@@ -175,7 +209,7 @@ export default function ChatPage() {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col min-w-0 relative bg-surface transition-colors duration-slower">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 relative bg-surface transition-colors duration-slower">
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
           <div className="absolute -top-40 -right-40 w-80 h-80 bg-brand/5 rounded-full blur-3xl" />
           <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-rose-300/10 rounded-full blur-3xl" />
@@ -183,9 +217,14 @@ export default function ChatPage() {
 
         <ChatHeader
           onToggleSidebar={() => setShowSidebar(!showSidebar)}
-          headerVisible={headerVisible}
           onAbort={abort}
         />
+
+        {memoryPausedAfterRecall && (
+          <div className="shrink-0 bg-surface-hover px-4 py-2 text-xs text-text-muted" role="status">
+            为避免撤回内容通过旧记忆或摘要再次出现，本会话已暂停使用和自动提取记忆。
+          </div>
+        )}
 
         {!sidebarCollapsed && (
           <button
@@ -205,6 +244,8 @@ export default function ChatPage() {
           onRetry={retryMessage}
           onEditSubmit={editAndResend}
           onQuickSend={quickSend}
+          onBranch={handleBranch}
+          onRecall={handleRecall}
           showNewMsg={showNewMsg}
           onScrollToBottom={scrollToBottom}
         />

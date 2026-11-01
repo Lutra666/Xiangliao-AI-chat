@@ -17,11 +17,11 @@ const VARIANTS = {
 };
 
 const SIZES = {
-  sm: 'h-8 px-3 text-xs gap-1.5 rounded-md',
-  md: 'h-10 px-4 text-sm gap-2 rounded-md',
-  lg: 'h-11 px-5 text-[15px] gap-2 rounded-lg',
-  icon: 'h-10 w-10 rounded-md',
-  iconSm: 'h-8 w-8 rounded-md',
+  sm: 'h-8 px-3 text-xs gap-1.5 rounded-lg',
+  md: 'h-10 px-4 text-sm gap-2 rounded-xl',
+  lg: 'h-11 px-5 text-[15px] gap-2 rounded-xl',
+  icon: 'h-10 w-10 rounded-xl',
+  iconSm: 'h-8 w-8 rounded-lg',
 };
 
 export const Button = forwardRef(function Button(
@@ -44,7 +44,7 @@ export const Button = forwardRef(function Button(
       disabled={disabled || loading}
       className={cn(
         'inline-flex items-center justify-center font-medium select-none whitespace-nowrap',
-        'transition-all duration-normal ease-out cursor-pointer',
+        'transition-all duration-normal ease-out cursor-pointer active:scale-[0.97]',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
         'disabled:opacity-50 disabled:pointer-events-none',
         VARIANTS[variant],

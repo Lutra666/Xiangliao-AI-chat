@@ -116,17 +116,19 @@ async def build_optimized_context(db, user_id, session_id, current_question,
     # 缓存功能已移除：确保 response_prompt 等指令始终实时生效
     all_msgs = db.query(ChatMessage).filter(
         ChatMessage.session_id == session_id
-    ).order_by(ChatMessage.created_at.asc()).all()
+    ).order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc()).all()
+    all_msgs = [m for m in all_msgs if not (m.metadata_ or {}).get("recalled")]
+    recall_guard = bool(session and (session.parameters or {}).get("_recall_context_guard"))
 
     # ── 滚动摘要：历史过长时，用摘要替代较早的消息，省 token ──
     # 策略：本次先注入已有摘要（若有）+ 保留最近 SUMMARY_KEEP_MSGS 条原文；
     #       若历史超阈值且无摘要，异步生成（下次生效，不阻塞本次响应）。
-    summary_text = getattr(session, "summary", None) if session else None
+    summary_text = getattr(session, "summary", None) if session and not recall_guard else None
     if len(all_msgs) > SUMMARY_TRIGGER_MSGS:
         recent = all_msgs[-SUMMARY_KEEP_MSGS:]
         if summary_text:
             result["had_summary"] = True
-        elif llm_provider is not None and session is not None:
+        elif llm_provider is not None and session is not None and not recall_guard:
             # 异步生成摘要：用独立的 DB Session，避免请求结束后 session 被关闭
             _session_id = session.id
             older = [{"role": m.role, "content": m.content}
@@ -173,10 +175,11 @@ async def build_optimized_context(db, user_id, session_id, current_question,
 
     # inject memories (if memory engine available)
     injected_memories = []
-    if memory_engine:
+    if memory_engine and not recall_guard:
         try:
             memories = await memory_engine.retrieve_relevant(
                 user_id=user_id,
+                session_id=session_id,
                 query=current_question,
                 top_k=MEMORY_INJECT_COUNT
             )

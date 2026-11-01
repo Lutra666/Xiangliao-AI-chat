@@ -6,8 +6,10 @@ export const genMsgId = () => `${Date.now()}-${++_msgIdCounter}`;
 
 const INITIAL = {
   sessionId: null,
+  newlyCreatedSessionId: null,
   messages: [],
   sessionTitle: '',
+  memoryPausedAfterRecall: false,
   streaming: '',
   loading: false,
   waitStage: 0, // 0=无 1=思考中 2=组织语言 3=耐心等待
@@ -22,7 +24,8 @@ const INITIAL = {
 export const useChatStore = create((set) => ({
   ...INITIAL,
 
-  setSessionId: (sessionId) => set({ sessionId }),
+  setSessionId: (sessionId, { created = false } = {}) =>
+    set({ sessionId, newlyCreatedSessionId: created ? sessionId : null }),
 
   setMessages: (updater) =>
     set((state) => ({
@@ -55,8 +58,10 @@ export const useChatStore = create((set) => ({
   resetForNewSession: () =>
     set({
       sessionId: null,
+      newlyCreatedSessionId: null,
       messages: [],
       sessionTitle: '',
+      memoryPausedAfterRecall: false,
       streaming: '',
       loading: false,
       waitStage: 0,
@@ -69,6 +74,7 @@ export const useChatStore = create((set) => ({
     set({
       messages: data.messages || [],
       sessionTitle: data.title || '',
+      memoryPausedAfterRecall: !!data.memory_paused_after_recall,
       sessionTokens: data.total_tokens_used || 0,
     }),
 

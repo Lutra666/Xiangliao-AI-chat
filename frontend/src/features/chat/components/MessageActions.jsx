@@ -1,83 +1,69 @@
-import { useState } from 'react';
-import { RotateCw, Copy, Check, Pencil, Trash2, Clock } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { RotateCw, Copy, Pencil, Trash2, GitBranch, Undo2, X } from 'lucide-react';
 import { formatTime } from '../utils/formatTime';
 
 export default function MessageActions({
-  content,
-  createdAt,
-  isUser,
-  onRetry,
-  onEdit,
-  onDelete,
-  canEdit,
+  content, createdAt, tokenCount, isUser, onRetry, onEdit, onDelete,
+  onBranch, onRecall, canEdit, menuOpen, onClose,
 }) {
-  const [copied, setCopied] = useState(false);
+  const firstActionRef = useRef(null);
 
-  const handleCopy = () => {
-    const text = content || '';
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).catch(() => fallback(text));
-    } else {
-      fallback(text);
+  useEffect(() => {
+    if (!menuOpen) return;
+    firstActionRef.current?.focus();
+    const onKeyDown = (event) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [menuOpen, onClose]);
+
+  const copy = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
+      await navigator.clipboard.writeText(content || '');
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = content || '';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const copied = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      if (!copied) { alert('复制失败，请手动选择内容'); return; }
     }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    onClose();
   };
 
-  const fallback = (text) => {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    try { document.execCommand('copy'); } catch {}
-    document.body.removeChild(ta);
-  };
+  const action = (handler) => () => { onClose(); handler?.(); };
+  const itemClass = 'flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm text-text transition-colors hover:bg-surface-hover active:bg-surface-active';
 
   return (
-    <div className="flex items-center gap-0.5 mt-1.5 ml-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity duration-normal">
-      {createdAt && (
-        <span className="inline-flex items-center gap-0.5 text-[10px] text-text-subtle px-1">
-          <Clock className="w-2.5 h-2.5" />
-          {formatTime(createdAt)}
-        </span>
+    <>
+      <div className="flex flex-wrap items-center gap-2 mt-1.5 mx-1 text-[10px] text-text-subtle">
+        {createdAt && <span>{formatTime(createdAt)}</span>}
+        {tokenCount != null && <span>{tokenCount} tokens</span>}
+        {!isUser && onRetry && (
+          <button onClick={onRetry} title="重新生成" className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 hover:bg-brand-soft hover:text-brand transition-colors cursor-pointer">
+            <RotateCw className="w-3 h-3" /> 重试
+          </button>
+        )}
+      </div>
+      {menuOpen && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-6 backdrop-blur-[3px]"
+          onClick={onClose}>
+          <div role="dialog" aria-modal="true" aria-label="消息操作" onClick={(event) => event.stopPropagation()}
+            className="w-full max-w-xs rounded-[24px] bg-surface p-2 shadow-xl border border-border animate-in zoom-in-95">
+            <div className="flex items-center justify-between px-4 py-2 text-sm font-semibold text-text-header">
+              消息操作
+              <button onClick={onClose} aria-label="关闭" className="p-1 text-text-muted"><X className="w-4 h-4" /></button>
+            </div>
+            <button ref={firstActionRef} onClick={copy} className={itemClass}><Copy className="w-4 h-4" />复制</button>
+            {canEdit && <button onClick={action(onEdit)} className={itemClass}><Pencil className="w-4 h-4" />编辑</button>}
+            {onBranch && <button onClick={action(onBranch)} className={itemClass}><GitBranch className="w-4 h-4" />从这里开启分支</button>}
+            {onRecall && <button onClick={action(onRecall)} className={itemClass}><Undo2 className="w-4 h-4" />撤回</button>}
+            {onDelete && <button onClick={action(onDelete)} className={itemClass}><Trash2 className="w-4 h-4" />删除</button>}
+          </div>
+        </div>, document.body
       )}
-      {!isUser && onRetry && (
-        <button
-          onClick={onRetry}
-          className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 text-text-subtle hover:text-brand hover:bg-brand-soft rounded-full transition cursor-pointer"
-          title="重新生成"
-        >
-          <RotateCw className="w-2.5 h-2.5" />
-          重试
-        </button>
-      )}
-      <button
-        onClick={handleCopy}
-        className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 text-text-subtle hover:text-text hover:bg-surface-hover rounded-full transition cursor-pointer"
-        title="复制选中文本"
-      >
-        {copied ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
-        {copied ? '已复制' : '复制'}
-      </button>
-      {canEdit && (
-        <button
-          onClick={onEdit}
-          className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 text-text-subtle hover:text-brand hover:bg-brand-soft rounded-full transition cursor-pointer"
-          title="编辑后从这条重新对话"
-        >
-          <Pencil className="w-2.5 h-2.5" />
-          编辑
-        </button>
-      )}
-      {onDelete && (
-        <button
-          onClick={onDelete}
-          className="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 text-text-subtle hover:text-danger hover:bg-danger-soft rounded-full transition cursor-pointer"
-        >
-          <Trash2 className="w-2.5 h-2.5" />
-          删除
-        </button>
-      )}
-    </div>
+    </>
   );
 }

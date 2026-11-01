@@ -52,40 +52,48 @@ export async function readChatStream(prompt, sessionId, opts, handlers) {
   let buffer = '';
   let errored = false;
 
+  const processLine = (line) => {
+    if (!line.startsWith('data:')) return;
+    let event;
+    try {
+      event = JSON.parse(line.slice(5).trim());
+    } catch {
+      return;
+    }
+    switch (event.type) {
+      case 'chunk':
+        fullText += event.content || '';
+        onChunk?.(event.content || '', fullText);
+        break;
+      case 'timing':
+        onTiming?.(event);
+        break;
+      case 'usage':
+        onUsage?.(event);
+        break;
+      case 'done':
+        done = true;
+        onDone?.(event);
+        break;
+      case 'error':
+        errored = true;
+        onError?.(event.message || '未知错误');
+        break;
+    }
+  };
+
   while (true) {
     const { done: streamDone, value } = await reader.read();
-    if (streamDone) break;
+    if (streamDone) {
+      buffer += decoder.decode();
+      if (buffer) processLine(buffer);
+      break;
+    }
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
     buffer = lines.pop() || ''; // 保留最后不完整的一行
     for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      let event;
-      try {
-        event = JSON.parse(line.slice(6));
-      } catch {
-        continue; // 跳过无法解析的行
-      }
-      switch (event.type) {
-        case 'chunk':
-          fullText += event.content || '';
-          onChunk?.(event.content || '', fullText);
-          break;
-        case 'timing':
-          onTiming?.(event);
-          break;
-        case 'usage':
-          onUsage?.(event);
-          break;
-        case 'done':
-          done = true;
-          onDone?.(event);
-          break;
-        case 'error':
-          errored = true;
-          onError?.(event.message || '未知错误');
-          break;
-      }
+      processLine(line);
       if (errored) break;
     }
     if (errored) break;

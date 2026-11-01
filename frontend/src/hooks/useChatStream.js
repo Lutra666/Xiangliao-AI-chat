@@ -137,6 +137,7 @@ ${ctx ? `\n对话上下文：\n${ctx}` : ''}`;
           id: msgId,
           role: msgRole,
           content: '',
+          created_at: new Date().toISOString(),
           asRole: roleLabel,
           streaming: true,
         });
@@ -184,11 +185,13 @@ ${ctx ? `\n对话上下文：\n${ctx}` : ''}`;
 
       // ── 普通消息 ──
       // retry 模式不重复插入 user 消息（handleRetry 已保留原 user 消息）
+      const userMsgId = !retry ? genMsgId() : null;
       if (!retry) {
         useChatStore.getState().appendMessage({
-          id: genMsgId(),
+          id: userMsgId,
           role: 'user',
           content: currentInput,
+          created_at: new Date().toISOString(),
           _context: msgContext,
         });
       }
@@ -200,6 +203,7 @@ ${ctx ? `\n对话上下文：\n${ctx}` : ''}`;
         id: aiMsgId,
         role: 'assistant',
         content: '',
+        created_at: new Date().toISOString(),
         streaming: true,
       });
 
@@ -234,7 +238,8 @@ ${ctx ? `\n对话上下文：\n${ctx}` : ''}`;
             },
             onDone: (event) => {
               const st = useChatStore.getState();
-              if (!st.sessionId) st.setSessionId(event.session_id);
+              if (!st.sessionId) st.setSessionId(event.session_id, { created: true });
+              if (userMsgId && event.user_message_id) st.updateMessage(userMsgId, { id: event.user_message_id });
               st.updateMessage(aiMsgId, {
                 id: event.message_id || aiMsgId,
                 streaming: false,
@@ -304,6 +309,7 @@ ${ctx ? `\n对话上下文：\n${ctx}` : ''}`;
         id: msgId,
         role: msgRole,
         content: '',
+        created_at: new Date().toISOString(),
         streaming: true,
       });
 

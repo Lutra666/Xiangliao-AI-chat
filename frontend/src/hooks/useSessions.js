@@ -30,7 +30,9 @@ export function useDeleteSession() {
 export function useInheritSession() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (sessionId) => apiInheritSession(sessionId),
+    mutationFn: (input) => typeof input === 'object'
+      ? apiInheritSession(input.sessionId, input.messageId)
+      : apiInheritSession(input),
     onSuccess: () => qc.invalidateQueries({ queryKey: SESSIONS_KEY }),
   });
 }
@@ -46,6 +48,7 @@ export function useHistory(sessionId) {
         title: data.title || '',
         totalTokens: data.total_tokens_used || 0,
         characterId: data.character_id || null,
+        memoryPausedAfterRecall: !!data.memory_paused_after_recall,
       };
     },
     enabled: !!sessionId,

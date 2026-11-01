@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useChatStore } from '../../../store/useChatStore';
 
 /**
  * 草稿持久化 Hook —— 按 sessionId 缓存输入内容到 localStorage。
@@ -22,6 +23,7 @@ export function useDraft(sessionId) {
 
   // 用 ref 持有最新 input，使 setInput 不必依赖 input 状态
   const inputRef = useRef(input);
+  const previousKeyRef = useRef(draftKey);
   useEffect(() => {
     inputRef.current = input;
   }, [input]);
@@ -48,6 +50,12 @@ export function useDraft(sessionId) {
   // 切换会话时恢复草稿
   useEffect(() => {
     try {
+      // 新会话首次收到服务端 ID 时，将回复期间输入的草稿一起带过去。
+      if (previousKeyRef.current === 'draft_new' && draftKey !== 'draft_new'
+          && useChatStore.getState().newlyCreatedSessionId === sessionId && inputRef.current) {
+        localStorage.setItem(draftKey, inputRef.current);
+        localStorage.removeItem('draft_new');
+      }
       const v = localStorage.getItem(draftKey) || '';
       setInputState(v);
       inputRef.current = v;
@@ -55,8 +63,9 @@ export function useDraft(sessionId) {
       setInputState('');
       inputRef.current = '';
     }
+    previousKeyRef.current = draftKey;
     return flushDraft;
-  }, [draftKey, flushDraft]);
+  }, [draftKey, sessionId, flushDraft]);
 
   // 输入变化时保存（setInput 引用稳定，仅依赖 draftKey）
   const setInput = useCallback((value) => {

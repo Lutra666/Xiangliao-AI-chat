@@ -178,7 +178,7 @@ async def chat_stream(
                 estimate_tokens(full_text),
                 session.total_tokens_used,
             )
-            yield sse_done(session.id, assistant_msg.id, ctx.get("sources", []))
+            yield sse_done(session.id, assistant_msg.id, ctx.get("sources", []), user_msg.id)
 
         except asyncio.CancelledError:
             # 客户端中途断开：兜底落库已生成的部分回复
@@ -320,22 +320,44 @@ def get_history(session_id: int, user: User = Depends(get_current_user), db: Ses
     messages = (
         db.query(ChatMessage)
         .filter(ChatMessage.session_id == session_id)
-        .order_by(ChatMessage.created_at.asc())
+        .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
         .all()
     )
     return {
         "session_id": session_id,
         "title": session.title,
         "summary": session.summary,
+        "memory_paused_after_recall": bool((session.parameters or {}).get("_recall_context_guard")),
         "total_tokens_used": session.total_tokens_used or 0,
         "character_id": session.character_id,
         "messages": [{
             "id": m.id, "role": m.role, "content": m.content,
+            "recalled": bool((m.metadata_ or {}).get("recalled")),
             "sources": m.sources or [],
             "token_count": m.token_count,
             "created_at": m.created_at.isoformat(),
         } for m in messages],
     }
+
+
+@router.post("/message/{message_id}/recall")
+def recall_message(message_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    message = (db.query(ChatMessage).join(ChatSession)
+               .filter(ChatMessage.id == message_id, ChatSession.user_id == user.id)
+               .with_for_update().first())
+    if not message:
+        raise HTTPException(status_code=404, detail="消息不存在")
+    session = db.query(ChatSession).filter_by(id=message.session_id, user_id=user.id).with_for_update().one()
+    if not (message.metadata_ or {}).get("recalled"):
+        message.content = ""
+        message.sources = None
+        message.metadata_ = {**(message.metadata_ or {}), "recalled": True}
+        # 老记忆没有消息级来源，无法辨别哪些包含撤回内容。保留数据但暂停注入。
+        session.parameters = {**(session.parameters or {}), "_recall_context_guard": True}
+        session.summary = None
+        session.summary_rounds = 0
+        db.commit()
+    return {"ok": True, "session_id": session.id}
 
 
 @router.get("/sessions")
@@ -364,7 +386,7 @@ def delete_session(session_id: int, user: User = Depends(get_current_user), db: 
 
 
 @router.post("/inherit/{session_id}")
-def inherit_session(session_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def inherit_session(session_id: int, through_message_id: Optional[int] = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """继承历史对话 — 复制消息到新会话"""
     old = db.query(ChatSession).filter(
         ChatSession.id == session_id, ChatSession.user_id == user.id
@@ -372,17 +394,26 @@ def inherit_session(session_id: int, user: User = Depends(get_current_user), db:
     if not old:
         raise HTTPException(status_code=404, detail="会话不存在")
 
+    messages = db.query(ChatMessage).filter(ChatMessage.session_id == session_id).order_by(
+        ChatMessage.created_at.asc(), ChatMessage.id.asc()
+    ).all()
+    if through_message_id is not None:
+        index = next((i for i, msg in enumerate(messages) if msg.id == through_message_id), None)
+        if index is None:
+            raise HTTPException(status_code=404, detail="消息不存在")
+        messages = messages[:index + 1]
+
     new_session = ChatSession(
         user_id=user.id,
         character_id=old.character_id,
-        title=f"{old.title}（续）",
+        title=f"{(old.title or '新对话')[:96]}{'（分支）' if through_message_id is not None else '（续）'}",
         parameters=old.parameters,
     )
     db.add(new_session)
     db.flush()
 
     msg_count = 0
-    for msg in old.messages:
+    for msg in messages:
         db.add(ChatMessage(
             session_id=new_session.id,
             role=msg.role,
@@ -407,14 +438,16 @@ def inherit_session(session_id: int, user: User = Depends(get_current_user), db:
 
 
 @router.post("/suggestions")
-async def ai_suggestions(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def ai_suggestions(session_id: Optional[int] = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """AI 主动生成互动建议"""
     from ..services.memory_engine import get_memory_engine
 
+    if session_id and not db.query(ChatSession.id).filter_by(id=session_id, user_id=user.id).first():
+        raise HTTPException(status_code=404, detail="会话不存在")
     recent_messages = (
         db.query(ChatMessage)
         .join(ChatSession)
-        .filter(ChatSession.user_id == user.id)
+        .filter(ChatSession.user_id == user.id, ChatSession.id == session_id)
         .order_by(ChatMessage.created_at.desc())
         .limit(10)
         .all()
@@ -422,8 +455,9 @@ async def ai_suggestions(user: User = Depends(get_current_user), db: Session = D
 
     memory_count = 0
     engine = get_memory_engine()
-    if engine:
-        memories = await engine.list_memories(user.id)
+    session = db.query(ChatSession).filter_by(id=session_id, user_id=user.id).first() if session_id else None
+    if engine and session and not (session.parameters or {}).get("_recall_context_guard"):
+        memories = await engine.list_memories(user.id, session_id)
         memory_count = len(memories)
 
     recent_context = ""

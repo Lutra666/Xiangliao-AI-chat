@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, memo } from 'react';
+import { useState, useRef, useCallback, useEffect, memo } from 'react';
 import { ChevronRight, FileText } from 'lucide-react';
 import { cn } from '../../../lib/cn';
 import { Avatar } from '../../../components/ui';
@@ -9,7 +9,6 @@ function ChatBubble({
   role,
   content,
   sources,
-  timing,
   tokenCount,
   userAvatar,
   aiAvatar,
@@ -20,12 +19,35 @@ function ChatBubble({
   onRetry,
   onDelete,
   onEditSubmit,
+  onBranch,
+  onRecall,
   messageIndex,
 }) {
   const [showSources, setShowSources] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [editText, setEditText] = useState('');
   const editTextareaRef = useRef(null);
+  const holdRef = useRef(null);
+  const pointerStartRef = useRef(null);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const cancelHold = useCallback(() => {
+    clearTimeout(holdRef.current);
+    holdRef.current = null;
+    pointerStartRef.current = null;
+  }, []);
+  useEffect(() => cancelHold, [cancelHold]);
+
+  const startHold = (event) => {
+    if (editing || isStreaming || event.button !== 0 || event.target.closest('button, a, textarea, input')) return;
+    cancelHold();
+    pointerStartRef.current = { x: event.clientX, y: event.clientY };
+    holdRef.current = setTimeout(() => { setMenuOpen(true); holdRef.current = null; }, 500);
+  };
+  const moveHold = (event) => {
+    const start = pointerStartRef.current;
+    if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) cancelHold();
+  };
 
   const isUser = role === 'user' && !asRole;
   const isRoleMsg = !!asRole;
@@ -90,15 +112,35 @@ function ChatBubble({
 
           {/* 气泡 */}
           <div
+            onPointerDown={startHold}
+            onPointerMove={moveHold}
+            onPointerUp={cancelHold}
+            onPointerCancel={cancelHold}
+            onPointerLeave={cancelHold}
+            onContextMenu={(event) => {
+              if (editing || isStreaming || event.target.closest('button, a, textarea, input')) return;
+              event.preventDefault();
+              cancelHold();
+              setMenuOpen(true);
+            }}
+            onKeyDown={(event) => {
+              if (!editing && !isStreaming && (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) {
+                event.preventDefault();
+                setMenuOpen(true);
+              }
+            }}
+            tabIndex={!editing && !isStreaming ? 0 : undefined}
+            aria-label={!editing && !isStreaming ? '聊天消息，长按或使用上下文菜单打开操作' : undefined}
+            style={{ WebkitTouchCallout: editing ? undefined : 'none' }}
             className={cn(
-              'px-4 py-2.5 rounded-2xl text-[14.5px] leading-relaxed whitespace-pre-wrap shadow-xs',
+              'chat-message-surface px-4 py-3 rounded-[20px] text-[14.5px] leading-relaxed whitespace-pre-wrap break-words shadow-xs',
               isDraft
                 ? 'bg-surface-hover text-text-subtle italic border border-dashed border-border-strong'
                 : isUser
-                  ? 'bg-text-header text-bg-elevated rounded-br-md font-medium shadow-sm'
+                  ? 'bg-text-header text-bg-elevated rounded-br-lg font-medium shadow-sm'
                   : isRoleMsg
-                    ? 'bg-brand-soft border border-border-brand text-text rounded-bl-md'
-                    : 'bg-surface border border-border text-text rounded-bl-md shadow-sm',
+                    ? 'bg-brand-soft border border-border-brand text-text rounded-bl-lg'
+                    : 'bg-surface border border-border text-text rounded-bl-lg shadow-sm',
               editing && 'p-2'
             )}
           >
@@ -152,33 +194,17 @@ function ChatBubble({
             <MessageActions
               content={content}
               createdAt={createdAt}
+              tokenCount={tokenCount}
               isUser={isUser}
               onRetry={onRetry ? () => onRetry(messageIndex) : null}
               onEdit={canEdit ? startEdit : null}
               onDelete={onDelete}
+              onBranch={onBranch}
+              onRecall={onRecall}
               canEdit={canEdit}
+              menuOpen={menuOpen}
+              onClose={closeMenu}
             />
-          )}
-
-          {/* 元数据：思考时间 + token */}
-          {!isUser && (timing || tokenCount) && (
-            <div className="flex flex-wrap gap-2 mt-1 ml-1">
-              {timing && (
-                <span className="text-[10px] text-text-subtle bg-surface-hover px-2 py-0.5 rounded-full">
-                  ⚡{' '}
-                  {timing.ttft_ms > 0
-                    ? `思考 ${(timing.ttft_ms / 1000).toFixed(1)}s · 总计 ${(
-                        timing.total_ms / 1000
-                      ).toFixed(1)}s`
-                    : '缓存命中'}
-                </span>
-              )}
-              {tokenCount && (
-                <span className="text-[10px] text-text-subtle bg-surface-hover px-2 py-0.5 rounded-full">
-                  🔤 ~{tokenCount} tokens
-                </span>
-              )}
-            </div>
           )}
 
           {/* 知识库溯源 */}

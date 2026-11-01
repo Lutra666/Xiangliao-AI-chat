@@ -18,6 +18,20 @@ body {
   transition: background-color var(--duration-slower) ease-out, color var(--duration-slower) ease-out;
 }
 
+/* 细微的边缘和阴影，保持原有配色。 */
+.chat-message-surface {
+  box-shadow: 0 2px 8px rgb(28 25 23 / .055), 0 1px 2px rgb(28 25 23 / .035);
+}
+.dark .chat-message-surface {
+  box-shadow: 0 3px 12px rgb(0 0 0 / .16), inset 0 1px rgb(255 255 255 / .025);
+}
+.chat-composer-surface {
+  box-shadow: 0 6px 20px rgb(28 25 23 / .07), 0 1px 4px rgb(28 25 23 / .04);
+}
+.dark .chat-composer-surface {
+  box-shadow: 0 6px 20px rgb(0 0 0 / .2), inset 0 1px rgb(255 255 255 / .025);
+}
+
 /* ── View Transition 主题切换圆形扩散 ── */
 ::view-transition-old(root),
 ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
@@ -118,3 +132,6 @@ html.circle-animate { animation: circle-expand 0.5s var(--ease-out); }
   font-size: 0.875em;
   color: var(--color-brand);
 }
+
+/* 键盘操作时提供清晰的焦点提示 */
+:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 3px; }

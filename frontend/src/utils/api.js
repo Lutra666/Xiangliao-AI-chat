@@ -90,7 +90,7 @@ async function request(path, options = {}) {
     throw new Error(friendlyError(0, e?.message || 'network'));
   }
 
-  if (res.status === 401) {
+  if (res.status === 401 && path !== '/auth/login') {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     // 跳转登录页（App.jsx 使用 HashRouter，用 hash 方式导航）
@@ -125,6 +125,7 @@ export async function login(username, password) {
   });
   if (!res.ok) {
     const data = await readJsonSafely(res);
+    if (res.status === 401) throw new Error('用户名或密码错误');
     throw new Error(_errMsg(res, data));
   }
   const data = await res.json();
@@ -242,8 +243,15 @@ export async function deleteSession(sessionId) {
   return res.json();
 }
 
-export async function inheritSession(sessionId) {
-  const res = await request(`/chat/inherit/${sessionId}`, { method: 'POST' });
+export async function recallMessage(messageId) {
+  const res = await request(`/chat/message/${messageId}/recall`, { method: 'POST' });
+  if (!res.ok) { const data = await readJsonSafely(res); throw new Error(_errMsg(res, data)); }
+  return res.json();
+}
+
+export async function inheritSession(sessionId, messageId = null) {
+  const suffix = messageId == null ? '' : `?through_message_id=${encodeURIComponent(messageId)}`;
+  const res = await request(`/chat/inherit/${sessionId}${suffix}`, { method: 'POST' });
   if (!res.ok) { const d = await readJsonSafely(res); throw new Error(_errMsg(res, d)); }
   return res.json();
 }
@@ -344,10 +352,20 @@ export async function listModels() {
 // 记忆 API
 // ═══════════════════════════════════════════════
 
-export async function listMemories(category = null) {
-  const params = category ? `?category=${category}` : '';
-  const res = await request(`/memory/list${params}`);
-  if (!res.ok) return [];
+export async function listMemories(sessionId, category = null) {
+  const params = new URLSearchParams({ session_id: sessionId });
+  if (category) params.set('category', category);
+  const res = await request(`/memory/list?${params}`);
+  if (!res.ok) throw new Error('加载会话记忆失败');
+  return res.json();
+}
+
+export async function createMemory(sessionId, content, category = 'fact') {
+  const res = await request('/memory', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId, content, category }),
+  });
+  if (!res.ok) { const data = await readJsonSafely(res); throw new Error(_errMsg(res, data)); }
   return res.json();
 }
 
@@ -365,8 +383,9 @@ export async function updateMemory(id, data) {
   return res.json();
 }
 
-export async function consolidateMemories() {
-  const res = await request('/memory/consolidate', { method: 'POST' });
+export async function consolidateMemories(sessionId) {
+  const res = await request(`/memory/consolidate?session_id=${encodeURIComponent(sessionId)}`, { method: 'POST' });
+  if (!res.ok) throw new Error('整理会话记忆失败');
   return res.json();
 }
 

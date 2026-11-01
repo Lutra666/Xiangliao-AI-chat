@@ -69,7 +69,7 @@ class MemoryEngine:
         注意：不缓存 session，每次操作使用独立的 session 避免并发问题
         """
         self._get_db = db_session_factory
-        self._extract_counts: dict[int, int] = {}
+        self._extract_counts: dict[tuple[int, int], int] = {}
 
     # ═══════════════════════════════════════════════════════
     # 记忆提取
@@ -112,7 +112,7 @@ class MemoryEngine:
             try:
                 existing_mems = (
                     db_preview.query(Memory)
-                    .filter(Memory.user_id == user_id)
+                    .filter(Memory.user_id == user_id, Memory.session_id == session_id)
                     .order_by(Memory.importance.desc())
                     .limit(50)
                     .all()
@@ -157,16 +157,17 @@ class MemoryEngine:
             stored = []
             for mem, vec in zip(new_memories, vectors):
                 # 用向量相似度检查是否与已有记忆重复（中文也准确）
-                if self._is_duplicate(db, user_id, mem["content"], vec):
+                if self._is_duplicate(db, user_id, session_id, mem["content"], vec):
                     continue
                 stored.append(self._store_memory(db, user_id, session_id, mem, vec))
             db.commit()
 
             # 每隔一定次数自动整理记忆（合并相似 / 清理过期 / 控制上限）
-            self._extract_counts[user_id] = self._extract_counts.get(user_id, 0) + 1
-            if self._extract_counts[user_id] % CONSOLIDATE_EVERY_N_EXTRACTS == 0:
+            count_key = (user_id, session_id)
+            self._extract_counts[count_key] = self._extract_counts.get(count_key, 0) + 1
+            if self._extract_counts[count_key] % CONSOLIDATE_EVERY_N_EXTRACTS == 0:
                 try:
-                    cleaned = await self.consolidate(user_id)
+                    cleaned = await self.consolidate(user_id, session_id)
                     if cleaned:
                         logger.info(f"自动整理记忆: user={user_id}, 清理={cleaned}")
                 except Exception as e:
@@ -187,6 +188,7 @@ class MemoryEngine:
     async def retrieve_relevant(
         self,
         user_id: int,
+        session_id: int,
         query: str,
         top_k: int = 5,
     ) -> list[dict]:
@@ -205,7 +207,7 @@ class MemoryEngine:
         try:
             memories = (
                 db.query(Memory)
-                .filter(Memory.user_id == user_id)
+                .filter(Memory.user_id == user_id, Memory.session_id == session_id)
                 .order_by(Memory.created_at.asc())
                 .limit(MAX_MEMORIES_PER_USER)  # 取全部，避免预筛选 bias
                 .all()
@@ -293,11 +295,11 @@ class MemoryEngine:
     # 记忆管理
     # ═══════════════════════════════════════════════════════
 
-    async def list_memories(self, user_id: int, category: str = None) -> list[dict]:
+    async def list_memories(self, user_id: int, session_id: int, category: str = None) -> list[dict]:
         """列出用户的所有记忆"""
         db = self._get_db()
         try:
-            q = db.query(Memory).filter(Memory.user_id == user_id)
+            q = db.query(Memory).filter(Memory.user_id == user_id, Memory.session_id == session_id)
             if category:
                 q = q.filter(Memory.category == category)
             memories = q.order_by(Memory.importance.desc(), Memory.created_at.desc()).limit(200).all()
@@ -360,7 +362,7 @@ class MemoryEngine:
         finally:
             db.close()
 
-    async def consolidate(self, user_id: int) -> int:
+    async def consolidate(self, user_id: int, session_id: int) -> int:
         """
         合并相似记忆，清理过期记忆。
         返回清理/合并的记忆数量。
@@ -370,7 +372,7 @@ class MemoryEngine:
         try:
             memories = (
                 db.query(Memory)
-                .filter(Memory.user_id == user_id)
+                .filter(Memory.user_id == user_id, Memory.session_id == session_id)
                 .order_by(Memory.importance.asc())  # 低重要度的优先处理
                 .all()
             )
@@ -417,13 +419,13 @@ class MemoryEngine:
                     seen[key] = mem
 
             # 检查数量上限
-            remaining = db.query(Memory).filter(Memory.user_id == user_id).count()
+            remaining = db.query(Memory).filter(Memory.user_id == user_id, Memory.session_id == session_id).count()
             if remaining > MAX_MEMORIES_PER_USER:
                 # 删最旧最低重要度的
                 overflow = remaining - MAX_MEMORIES_PER_USER
                 to_delete = (
                     db.query(Memory)
-                    .filter(Memory.user_id == user_id)
+                    .filter(Memory.user_id == user_id, Memory.session_id == session_id)
                     .order_by(Memory.importance.asc(), Memory.access_count.asc())
                     .limit(overflow)
                     .all()
@@ -518,7 +520,7 @@ class MemoryEngine:
             "importance": record.importance,
         }
 
-    def _is_duplicate(self, db: Session, user_id: int, content: str,
+    def _is_duplicate(self, db: Session, user_id: int, session_id: int, content: str,
                       vec: list = None) -> bool:
         """
         检查是否与已有记忆重复。
@@ -529,7 +531,7 @@ class MemoryEngine:
         # 取该用户全部已有记忆（上限 MAX_MEMORIES_PER_USER，量可控）
         existing = (
             db.query(Memory)
-            .filter(Memory.user_id == user_id)
+            .filter(Memory.user_id == user_id, Memory.session_id == session_id)
             .order_by(Memory.created_at.asc())
             .limit(MAX_MEMORIES_PER_USER)
             .all()
