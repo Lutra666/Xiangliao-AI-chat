@@ -5,7 +5,7 @@ import { useChatStore } from '../../../store/useChatStore';
 import { useTheme } from '../../../utils/theme';
 import { cn } from '../../../lib/cn';
 
-export default function ChatHeader({ onToggleSidebar, onAbort }) {
+export default function ChatHeader({ onToggleSidebar, onAbort, onOpenStory }) {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const sessionId = useChatStore((s) => s.sessionId);
@@ -42,6 +42,11 @@ export default function ChatHeader({ onToggleSidebar, onAbort }) {
         {character && <span className="text-sm text-text-muted hidden sm:inline truncate">{character.avatar_url} {character.name}</span>}
       </div>
       <div className="flex items-center gap-1 min-w-0">
+        <button type="button" onClick={onOpenStory} aria-label="剧情、收藏和搜索"
+          className="shrink-0 rounded-full border border-border bg-surface px-2.5 py-1.5 text-xs text-text-muted hover:text-brand hover:border-border-brand transition-colors">
+          <span className="sm:hidden">剧情</span>
+          <span className="hidden sm:inline">剧情 · 收藏 · 搜索</span>
+        </button>
         {sessionId && sessionTokens > 0 && (
           <Tooltip content="本会话累计 token 用量" side="bottom">
             <span className="text-[10px] text-text-subtle hidden sm:inline-flex items-center gap-0.5">

@@ -20,7 +20,7 @@ import { streamChat, friendlyError } from './api';
  * 统一 buffer 解析、错误与取消处理。调用方负责把 fullText 反映到 UI。
  */
 export async function readChatStream(prompt, sessionId, opts, handlers) {
-  const { onChunk, onTiming, onUsage, onDone, onError } = handlers || {};
+  const { onStart, onChunk, onTiming, onUsage, onDone, onError } = handlers || {};
   let fullText = '';
   let done = false;
 
@@ -61,6 +61,9 @@ export async function readChatStream(prompt, sessionId, opts, handlers) {
       return;
     }
     switch (event.type) {
+      case 'started':
+        onStart?.(event);
+        break;
       case 'chunk':
         fullText += event.content || '';
         onChunk?.(event.content || '', fullText);

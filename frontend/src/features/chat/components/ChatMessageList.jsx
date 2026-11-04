@@ -15,7 +15,7 @@ import { useAppStore } from '../../../store/useAppStore';
  * 导致中文输入法卡顿）。配合 useDraft 中 setInput 引用稳定，确保传入的 props 稳定。
  */
 const ChatMessageList = memo(forwardRef(function ChatMessageList(
-  { scrollContainerRef, bottomRef, onRetry, onEditSubmit, onQuickSend, onBranch, onRecall, showNewMsg, onScrollToBottom },
+  { scrollContainerRef, bottomRef, onRetry, onEditSubmit, onQuickSend, onBranch, onRecall, onQuote, onBookmark, onContinue, onSelectVersion, showNewMsg, onScrollToBottom },
   _ref
 ) {
   const messages = useChatStore((s) => s.messages);
@@ -40,8 +40,14 @@ const ChatMessageList = memo(forwardRef(function ChatMessageList(
                 {m.role === 'user' ? '你' : 'AI'}撤回了一条消息
               </div>
             ) : (
+              <div key={m.id} id={`message-${m.id}`}>
+              {m.metadata?.quote_id && (() => {
+                const quoted = messages.find((item) => item.id === m.metadata.quote_id);
+                return <button className="mb-1 ml-10 max-w-[75%] truncate rounded-lg border-l-2 border-brand bg-brand-soft px-3 py-1 text-xs text-text-muted" onClick={() => document.getElementById(`message-${m.metadata.quote_id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+                  引用：{quoted && !quoted.recalled ? quoted.content : '消息已撤回或不可用'}
+                </button>;
+              })()}
               <ChatBubble
-                key={m.id}
                 role={m.role}
                 content={m.content}
                 sources={m.sources}
@@ -57,7 +63,13 @@ const ChatMessageList = memo(forwardRef(function ChatMessageList(
                 onEditSubmit={m.role === 'user' && !m.streaming ? onEditSubmit : null}
                 onBranch={typeof m.id === 'number' && !m.streaming && !loading ? () => onBranch(m.id) : null}
                 onRecall={typeof m.id === 'number' && !m.streaming && !loading ? () => onRecall(m.id) : null}
+                onQuote={typeof m.id === 'number' && !m.streaming && !loading ? () => onQuote(m) : null}
+                onBookmark={typeof m.id === 'number' && !m.streaming && !loading ? () => onBookmark(m) : null}
+                onContinue={typeof m.id === 'number' && m.role === 'assistant' && !m.streaming && !loading ? () => onContinue(m.id) : null}
+                metadata={m.metadata}
+                onSelectVersion={(index) => onSelectVersion(m.id, index)}
               />
+              </div>
             ))}
           </div>
         )}

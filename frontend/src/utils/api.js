@@ -160,6 +160,7 @@ export async function sendMessage(question, sessionId, opts = {}) {
       character_id: opts.characterId || null,
       parameters: opts.parameters || null,
       response_prompt: opts.response_prompt || null,
+      quote_id: opts.quoteId || null,
     }),
   });
   if (!res.ok) {
@@ -247,6 +248,13 @@ export async function recallMessage(messageId) {
   const res = await request(`/chat/message/${messageId}/recall`, { method: 'POST' });
   if (!res.ok) { const data = await readJsonSafely(res); throw new Error(_errMsg(res, data)); }
   return res.json();
+}
+
+export async function storyRequest(path, options = {}) {
+  const res = await request(`/story${path}`, options);
+  const data = await readJsonSafely(res);
+  if (!res.ok) throw new Error(_errMsg(res, data));
+  return data;
 }
 
 export async function inheritSession(sessionId, messageId = null) {

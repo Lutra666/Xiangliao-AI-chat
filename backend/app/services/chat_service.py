@@ -235,7 +235,7 @@ async def auto_extract(db: Session, user_id: int, session_id: int):
     if not engine:
         return
     session = db.query(ChatSession).filter_by(id=session_id, user_id=user_id).first()
-    if not session or (session.parameters or {}).get("_recall_context_guard"):
+    if not session:
         return
     settings = get_user_settings(db, user_id)
     if settings and not settings.memory_auto_extract:
@@ -244,7 +244,7 @@ async def auto_extract(db: Session, user_id: int, session_id: int):
         db.query(ChatMessage).filter(ChatMessage.session_id == session_id)
         .order_by(ChatMessage.created_at.asc()).all()
     )
-    recent = [{"role": m.role, "content": m.content} for m in messages if not (m.metadata_ or {}).get("recalled")][-20:]
+    recent = [{"id": m.id, "role": m.role, "content": m.content} for m in messages if not (m.metadata_ or {}).get("recalled")][-20:]
 
     async def _l(prompt, system_prompt=None, **kw):
         llm = await get_provider_for_user(db, user_id)

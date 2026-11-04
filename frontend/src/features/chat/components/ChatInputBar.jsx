@@ -25,11 +25,13 @@ import { useDraft } from '../hooks/useDraft';
  *   - 用 memo 包装，确保父组件因其他状态变化重渲染时不会连带本组件重渲染。
  */
 const ChatInputBar = forwardRef(function ChatInputBar(
-  { sessionId, onSend, onAbort, onInsertPrefix, onAutoGenerate },
+  { sessionId, onSend, onAbort, onInsertPrefix, onAutoGenerate, quote, onClearQuote },
   ref
 ) {
   const [input, setInput] = useDraft(sessionId);
   const [showEmoji, setShowEmoji] = useState(false);
+  const [length, setLength] = useState('标准');
+  const [tone, setTone] = useState('日常');
   const textareaRef = useRef(null);
   const resizeRafRef = useRef(null);
 
@@ -81,8 +83,8 @@ const ChatInputBar = forwardRef(function ChatInputBar(
     if (!text || loading) return;
     setRolePrefix('');
     setInput('');
-    onSend(text);
-  }, [input, loading, setRolePrefix, setInput, onSend]);
+    onSend(text, { length, tone });
+  }, [input, loading, setRolePrefix, setInput, onSend, length, tone]);
 
   const handleKeyDown = useCallback(
     (e) => {
@@ -105,7 +107,19 @@ const ChatInputBar = forwardRef(function ChatInputBar(
     <div className="px-3 md:px-5 pb-3 md:pb-5 shrink-0" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}>
       {/* 浮动输入卡片 */}
       <div className="max-w-3xl mx-auto">
+        <div className="flex flex-wrap items-center gap-2 mb-1.5 ml-1 text-[10px] text-text-muted">
+          <label className="inline-flex items-center gap-1">长度 <select aria-label="回复长度" value={length} onChange={(e) => setLength(e.target.value)} className="chat-preference-select bg-surface rounded-md px-1 py-0.5 border border-border text-xs">
+            {['简短', '标准', '详细'].map((value) => <option key={value}>{value}</option>)}
+          </select></label>
+          <label className="inline-flex items-center gap-1">风格 <select aria-label="回复风格" value={tone} onChange={(e) => setTone(e.target.value)} className="chat-preference-select bg-surface rounded-md px-1 py-0.5 border border-border text-xs">
+            {['日常', '剧情', '沉浸'].map((value) => <option key={value}>{value}</option>)}
+          </select></label>
+        </div>
         <RolePlayBar onInsertPrefix={onInsertPrefix} onAutoGenerate={onAutoGenerate} />
+        {quote && <div className="flex items-center gap-2 mb-2 rounded-xl border-l-2 border-brand bg-brand-soft px-3 py-2 text-xs text-text-muted">
+          <span className="flex-1 line-clamp-2">引用：{quote.content}</span>
+          <button onClick={onClearQuote} aria-label="取消引用">✕</button>
+        </div>}
 
         <div className="relative group">
           <div className="absolute -inset-0.5 bg-gradient-to-r from-brand/5 via-rose-300/10 to-brand/5

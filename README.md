@@ -2,6 +2,8 @@
 
 AI 聊天应用，包含 FastAPI 后端、React Web 前端和 Electron 桌面端。
 
+当前版本：v1.03（前端包版本 1.0.3）。版本更新记录见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 本地运行
 
 1. 安装 Python 和 Node.js，在 `backend` 目录安装依赖：`pip install -r requirements.txt`。

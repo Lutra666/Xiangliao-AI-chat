@@ -32,7 +32,7 @@ from ..services.token_manager import estimate_tokens
 from ..services.llm_provider import LLMProviderFactory, provider_metrics
 from ..core.exceptions import ExternalServiceException
 from ..services import chat_service as svc
-from ..services.sse import sse_chunk, sse_timing, sse_usage, sse_done, sse_error
+from ..services.sse import sse_chunk, sse_timing, sse_usage, sse_done, sse_error, sse_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -47,6 +47,7 @@ class AskRequest(BaseModel):
     character_id: Optional[int] = None
     parameters: Optional[dict] = None
     response_prompt: Optional[str] = None
+    quote_id: Optional[int] = Field(None, gt=0)
 
 
 class AskResponse(BaseModel):
@@ -90,8 +91,6 @@ async def chat_stream(
         assistant_msg = None
         full_answer = []
         committed = False
-        user_msg_added = False
-        was_new_session = req.session_id is None
 
         try:
             # ══ 1. 解析角色 + 合并参数 ══
@@ -104,8 +103,14 @@ async def chat_stream(
             )
 
             # ══ 3. 构建 token 优化后的上下文 ══
+            question_for_context = req.question
+            if req.quote_id:
+                quoted = db.query(ChatMessage).filter_by(id=req.quote_id, session_id=session.id).first()
+                if not quoted or (quoted.metadata_ or {}).get('recalled'):
+                    raise HTTPException(400, '引用消息不存在')
+                question_for_context = f"引用的消息：\n{quoted.content}\n\n用户回复：\n{req.question}"
             ctx, llm_provider = await svc.build_chat_context(
-                db, user, req.question, req.character_id,
+                db, user, question_for_context, req.character_id,
                 req.response_prompt, final_params, session,
             )
             messages = ctx["messages"]
@@ -115,10 +120,13 @@ async def chat_stream(
                 session_id=session.id,
                 role="user",
                 content=req.question,
+                metadata_={'quote_id': req.quote_id} if req.quote_id else None,
                 token_count=estimate_tokens(req.question),
             )
             db.add(user_msg)
-            user_msg_added = True
+            svc.update_session_title(session, req.question)
+            db.commit()
+            yield sse_event('started', {'session_id': session.id, 'user_message_id': user_msg.id})
 
             # ══ 5. LLM 流式调用 ══
             t_llm_start = time.perf_counter()
@@ -185,14 +193,6 @@ async def chat_stream(
             if not committed and session is not None and full_answer:
                 try:
                     db.rollback()
-                    if was_new_session:
-                        db.add(session)
-                        db.flush()
-                    if user_msg_added:
-                        db.add(ChatMessage(
-                            session_id=session.id, role="user",
-                            content=req.question, token_count=estimate_tokens(req.question),
-                        ))
                     partial = "".join(full_answer)
                     db.add(ChatMessage(
                         session_id=session.id, role="assistant",
@@ -333,6 +333,7 @@ def get_history(session_id: int, user: User = Depends(get_current_user), db: Ses
         "messages": [{
             "id": m.id, "role": m.role, "content": m.content,
             "recalled": bool((m.metadata_ or {}).get("recalled")),
+            "metadata": m.metadata_ or {},
             "sources": m.sources or [],
             "token_count": m.token_count,
             "created_at": m.created_at.isoformat(),
@@ -351,9 +352,9 @@ def recall_message(message_id: int, user: User = Depends(get_current_user), db: 
     if not (message.metadata_ or {}).get("recalled"):
         message.content = ""
         message.sources = None
-        message.metadata_ = {**(message.metadata_ or {}), "recalled": True}
+        message.metadata_ = {'recalled': True}
         # 老记忆没有消息级来源，无法辨别哪些包含撤回内容。保留数据但暂停注入。
-        session.parameters = {**(session.parameters or {}), "_recall_context_guard": True}
+        session.parameters = {**(session.parameters or {}), "_recall_context_guard": True, '_story_summary_verified': False}
         session.summary = None
         session.summary_rounds = 0
         db.commit()

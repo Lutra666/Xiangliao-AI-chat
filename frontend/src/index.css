@@ -106,6 +106,7 @@ html.circle-animate { animation: circle-expand 0.5s var(--ease-out); }
 /* ── 移动端输入缩放修复 ── */
 @media (max-width: 768px) {
   input, textarea, select { font-size: 16px !important; }
+  select.chat-preference-select { font-size: 12px !important; }
 }
 
 /* ── 无障碍：减少动效 ── */

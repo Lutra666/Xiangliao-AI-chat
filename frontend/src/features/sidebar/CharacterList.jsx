@@ -6,7 +6,7 @@ import { Button, Input, Textarea, Avatar, IconButton } from '../../components/ui
 import { useCharacters, useCreateCharacter, uploadCharacterAvatar } from '../../hooks/useCharacters';
 
 const DEFAULT_PROMPT =
-  '你是享聊，{{user_name}}的AI伙伴。\n\n【重要】每次回复必须以一句动作描写开头（*斜体*），然后再说话。对话中可以穿插动作描写。只说话不描写是违规的。\n\n示例：*轻轻靠过来，目光温柔地看向你* 我觉得……*端起茶杯抿了一口*';
+  '你是享聊，{{user_name}}的AI伙伴。请保持自然、有温度的交流，留意对方的话和情绪；在合适的剧情中加入动作与神态，不要每句都使用相同的描写。';
 
 export default function CharacterList({ activeCharId, onSelectChar }) {
   const navigate = useNavigate();

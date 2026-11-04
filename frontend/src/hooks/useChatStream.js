@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { readChatStream } from '../utils/stream';
+import { getHistory } from '../utils/api';
 import { useChatStore, genMsgId } from '../store/useChatStore';
 import { useAppStore } from '../store/useAppStore';
 
@@ -84,13 +85,14 @@ export function useChatStream() {
       const currentInput = (q || '').trim();
       if (!currentInput || useChatStore.getState().loading) return;
 
-      const { retry = false } = options || {};
+      const { retry = false, quoteId = null, stylePrompt = '' } = options || {};
 
       // ctxOverride 用于重试时还原原消息的上下文快照
       const currentState = useChatStore.getState();
       const effCharacterId = ctxOverride?.characterId ?? currentState.characterId;
       const effCharacter = ctxOverride?.character ?? currentState.character;
-      const effResponsePrompt = ctxOverride?.response_prompt ?? currentState.customResponsePrompt;
+      const basePrompt = ctxOverride?.response_prompt ?? currentState.customResponsePrompt;
+      const effResponsePrompt = [basePrompt, stylePrompt].filter(Boolean).join('\n');
       const effRolePrefix = ctxOverride?.rolePrefix ?? currentState.rolePrefix;
       const effRoleNames = ctxOverride?.roleNames ?? roleNames;
 
@@ -153,6 +155,10 @@ ${ctx ? `\n对话上下文：\n${ctx}` : ''}`;
               signal: abortRef.current?.signal,
             },
             {
+              onStart: (event) => {
+                const st = useChatStore.getState();
+                if (!st.sessionId) st.setSessionId(event.session_id, { created: true });
+              },
               onChunk: (_chunk, fullText) => {
                 useChatStore.getState().setStreaming(fullText);
                 useChatStore.getState().updateMessage(msgId, { content: fullText });
@@ -192,6 +198,7 @@ ${ctx ? `\n对话上下文：\n${ctx}` : ''}`;
           role: 'user',
           content: currentInput,
           created_at: new Date().toISOString(),
+          metadata: quoteId ? { quote_id: quoteId } : {},
           _context: msgContext,
         });
       }
@@ -215,9 +222,15 @@ ${ctx ? `\n对话上下文：\n${ctx}` : ''}`;
             characterId: effCharacterId,
             parameters: effCharacter?.parameters || {},
             response_prompt: effResponsePrompt,
+            quoteId,
             signal: abortRef.current?.signal,
           },
           {
+            onStart: (event) => {
+              const st = useChatStore.getState();
+              if (!st.sessionId) st.setSessionId(event.session_id, { created: true });
+              if (userMsgId && event.user_message_id) st.updateMessage(userMsgId, { id: event.user_message_id });
+            },
             onChunk: (_chunk, fullText) => {
               useChatStore.getState().setStreaming(fullText);
               useChatStore.getState().updateMessage(aiMsgId, { content: fullText });
@@ -254,7 +267,25 @@ ${ctx ? `\n对话上下文：\n${ctx}` : ''}`;
         useChatStore.getState().setStreaming('');
       } catch (err) {
         if (err.name === 'AbortError') {
-          finishWithNotice(aiMsgId, '已停止生成');
+          const state = useChatStore.getState();
+          const partial = state.messages.find((item) => item.id === aiMsgId)?.content || '';
+          const stoppedSession = state.sessionId;
+          if (!partial) finishWithNotice(aiMsgId, '已停止生成');
+          else {
+            state.updateMessage(aiMsgId, { streaming: false });
+            // 服务端断开后异步保存片段；找到持久化 ID 才开放续写。
+            (async () => {
+              for (let attempt = 0; attempt < 5 && stoppedSession; attempt++) {
+                await new Promise((resolve) => setTimeout(resolve, 300));
+                if (useChatStore.getState().sessionId !== stoppedSession) return;
+                try {
+                  const history = await getHistory(stoppedSession);
+                  const saved = [...(history.messages || [])].reverse().find((m) => m.role === 'assistant' && m.content === partial);
+                  if (saved) { useChatStore.getState().updateMessage(aiMsgId, { id: saved.id }); return; }
+                } catch { /* 下一次重试 */ }
+              }
+            })();
+          }
           return;
         }
         const msg = err?.message || 'AI 服务暂时不可用，请稍后重试';
@@ -324,6 +355,10 @@ ${ctx ? `\n对话上下文：\n${ctx}` : ''}`;
             signal: controller.signal,
           },
           {
+            onStart: (event) => {
+              const st = useChatStore.getState();
+              if (!st.sessionId) st.setSessionId(event.session_id, { created: true });
+            },
             onChunk: (_chunk, fullText) =>
               useChatStore.getState().updateMessage(msgId, { content: fullText }),
             onDone: (event) =>

@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..database import get_db, SessionLocal
-from ..models import User, ChatSession, Memory
+from ..models import User, ChatSession, Memory, MemoryProvenance
 from ..auth import get_current_user
 from ..services.memory_engine import get_memory_engine
 
@@ -40,8 +40,9 @@ def create_memory(data: MemoryCreate, user: User = Depends(get_current_user), db
     memory = Memory(user_id=user.id, session_id=data.session_id, content=content,
                     category=data.category, importance=0.7)
     db.add(memory)
+    db.flush()
+    db.add(MemoryProvenance(memory_id=memory.id, sources=[]))
     db.commit()
-    db.refresh(memory)
     return {"id": memory.id}
 
 

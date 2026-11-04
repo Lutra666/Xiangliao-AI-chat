@@ -9,7 +9,8 @@ import { useChatStream, useCharacters, useHistory, useInheritSession } from '../
 import { useAutoScroll } from '../features/chat/hooks/useAutoScroll';
 import { useChatStore } from '../store/useChatStore';
 import { useAppStore } from '../store/useAppStore';
-import { recallMessage } from '../utils/api';
+import { recallMessage, storyRequest } from '../utils/api';
+import StoryPanel from '../features/chat/components/StoryPanel';
 import { useQueryClient } from '@tanstack/react-query';
 
 /**
@@ -22,6 +23,9 @@ import { useQueryClient } from '@tanstack/react-query';
  */
 export default function ChatPage() {
   const [showSidebar, setShowSidebar] = useState(false);
+  const [showStory, setShowStory] = useState(false);
+  const [quote, setQuote] = useState(null);
+  const pendingJump = useRef(null);
   const queryClient = useQueryClient();
   const recallingRef = useRef(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -47,7 +51,7 @@ export default function ChatPage() {
   }, [character]);
 
   // ── 聊天流式 hook ──
-  const { sendMessage, retryMessage, editAndResend, abort, autoGenerateRole, roleNames } =
+  const { sendMessage, editAndResend, abort, autoGenerateRole, roleNames } =
     useChatStream();
 
   // ── 智能滚动 ──
@@ -61,7 +65,7 @@ export default function ChatPage() {
   const { data: historyData } = useHistory(sessionId);
   const inheritSession = useInheritSession();
   useEffect(() => {
-    if (historyData) {
+    if (historyData && !useChatStore.getState().loading) {
       useChatStore.getState().loadHistoryInto({
         messages: historyData.messages,
         title: historyData.title,
@@ -69,6 +73,11 @@ export default function ChatPage() {
         total_tokens_used: historyData.totalTokens,
       });
       if (historyData.characterId) setActiveCharacterId(historyData.characterId);
+      if (pendingJump.current) {
+        const id = pendingJump.current;
+        pendingJump.current = null;
+        requestAnimationFrame(() => document.getElementById(`message-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+      }
     }
   }, [historyData, setActiveCharacterId]);
 
@@ -76,6 +85,7 @@ export default function ChatPage() {
   const handleSelect = useCallback(
     (sid) => {
       abort();
+      setQuote(null);
       useChatStore.getState().setSessionId(sid);
       setShowSidebar(false);
       scrollToBottom();
@@ -85,6 +95,7 @@ export default function ChatPage() {
 
   const handleNew = useCallback(() => {
     abort();
+    setQuote(null);
     useChatStore.getState().resetForNewSession();
     setShowSidebar(false);
     scrollToBottom();
@@ -126,13 +137,51 @@ export default function ChatPage() {
 
   // ── 发送（由 ChatInputBar 内部调用，传入文本）──
   const handleSend = useCallback(
-    (text) => {
+    (text, preferences = {}) => {
       if (!text || useChatStore.getState().loading) return;
       useChatStore.getState().setRolePrefix('');
-      sendMessage(text);
+      const lengths = { 简短: '回答简短，保留自然对话节奏。', 标准: '', 详细: '适当展开情绪、动作和场景细节。' };
+      const tones = { 日常: '使用自然、轻松的日常口吻。', 剧情: '结合场景推进剧情，适量描写动作和环境。', 沉浸: '保持沉浸式角色扮演，让情绪通过细节自然呈现。' };
+      sendMessage(text, null, { quoteId: quote?.id, stylePrompt: [lengths[preferences.length], tones[preferences.tone]].filter(Boolean).join('\n') });
+      setQuote(null);
     },
-    [sendMessage]
+    [sendMessage, quote]
   );
+
+  const refreshHistory = useCallback((sid) => queryClient.invalidateQueries({ queryKey: ['history', sid] }), [queryClient]);
+  const runVersion = useCallback(async (id, mode = 'retry') => {
+    if (!sessionId || useChatStore.getState().loading) return;
+    useChatStore.getState().setLoading(true);
+    try {
+      const result = await storyRequest(`/message/${id}/version?mode=${mode}`, { method: 'POST' });
+      if (useChatStore.getState().sessionId === sessionId) {
+        const current = useChatStore.getState().messages.find((m) => m.id === id);
+        useChatStore.getState().updateMessage(id, { content: result.content, metadata: { ...current?.metadata, versions: result.versions, version_index: result.version_index } });
+        useChatStore.setState({ memoryPausedAfterRecall: true });
+      }
+    } catch (error) { alert(error.message || '生成失败，请重试'); }
+    finally { useChatStore.getState().setLoading(false); await refreshHistory(sessionId); }
+  }, [sessionId, refreshHistory]);
+  const retryMessage = useCallback((index) => {
+    const message = useChatStore.getState().messages[index];
+    if (typeof message?.id === 'number') runVersion(message.id);
+    else alert('请等待消息保存完成后重试');
+  }, [runVersion]);
+  const selectVersion = useCallback(async (id, index) => {
+    if (useChatStore.getState().loading) return;
+    try {
+      await storyRequest(`/message/${id}/version`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ index }) });
+      await refreshHistory(sessionId);
+    } catch (error) { alert(error.message || '切换版本失败'); }
+  }, [sessionId, refreshHistory]);
+  const bookmark = useCallback(async (message) => {
+    const note = window.prompt('收藏备注（以 #节点 开头标记剧情节点；输入 /取消 可移除收藏）', message.metadata?.bookmark?.note || '');
+    if (note === null) return;
+    try {
+      await storyRequest(`/message/${message.id}/bookmark`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ saved: note.trim() !== '/取消', note, node: note.startsWith('#节点') }) });
+      await refreshHistory(sessionId);
+    } catch (error) { alert(error.message || '收藏失败'); }
+  }, [sessionId, refreshHistory]);
 
   // ── 快捷发送（来自 ChatEmptyState 建议卡片）──
   const quickSend = useCallback(
@@ -218,11 +267,17 @@ export default function ChatPage() {
         <ChatHeader
           onToggleSidebar={() => setShowSidebar(!showSidebar)}
           onAbort={abort}
+          onOpenStory={() => setShowStory(true)}
         />
+        {showStory && <StoryPanel sessionId={sessionId} onClose={() => setShowStory(false)} onOpenMessage={(sid, id) => {
+          setShowStory(false);
+          if (sid === sessionId) document.getElementById(`message-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          else { pendingJump.current = id; handleSelect(sid); }
+        }} />}
 
         {memoryPausedAfterRecall && (
           <div className="shrink-0 bg-surface-hover px-4 py-2 text-xs text-text-muted" role="status">
-            为避免撤回内容通过旧记忆或摘要再次出现，本会话已暂停使用和自动提取记忆。
+            本会话仅使用来源可确认且未失效的记忆；来源不明的旧记忆不会用于回复。
           </div>
         )}
 
@@ -246,6 +301,10 @@ export default function ChatPage() {
           onQuickSend={quickSend}
           onBranch={handleBranch}
           onRecall={handleRecall}
+          onQuote={(message) => { setQuote(message); inputBarRef.current?.focus(); }}
+          onBookmark={bookmark}
+          onContinue={(id) => runVersion(id, 'continue')}
+          onSelectVersion={selectVersion}
           showNewMsg={showNewMsg}
           onScrollToBottom={scrollToBottom}
         />
@@ -257,6 +316,8 @@ export default function ChatPage() {
           onAbort={abort}
           onInsertPrefix={onInsertPrefix}
           onAutoGenerate={onAutoGenerate}
+          quote={quote}
+          onClearQuote={() => setQuote(null)}
         />
       </div>
     </div>

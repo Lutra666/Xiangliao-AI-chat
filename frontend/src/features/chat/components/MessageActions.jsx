@@ -5,7 +5,7 @@ import { formatTime } from '../utils/formatTime';
 
 export default function MessageActions({
   content, createdAt, tokenCount, isUser, onRetry, onEdit, onDelete,
-  onBranch, onRecall, canEdit, menuOpen, onClose,
+  onBranch, onRecall, onQuote, onBookmark, onContinue, bookmarked, canEdit, menuOpen, onClose,
 }) {
   const firstActionRef = useRef(null);
 
@@ -57,6 +57,9 @@ export default function MessageActions({
               <button onClick={onClose} aria-label="关闭" className="p-1 text-text-muted"><X className="w-4 h-4" /></button>
             </div>
             <button ref={firstActionRef} onClick={copy} className={itemClass}><Copy className="w-4 h-4" />复制</button>
+            {onQuote && <button onClick={action(onQuote)} className={itemClass}>↩ 引用回复</button>}
+            {onBookmark && <button onClick={action(onBookmark)} className={itemClass}>☆ {bookmarked ? '编辑收藏' : '收藏 / 标记节点'}</button>}
+            {onContinue && <button onClick={action(onContinue)} className={itemClass}>✦ 继续生成</button>}
             {canEdit && <button onClick={action(onEdit)} className={itemClass}><Pencil className="w-4 h-4" />编辑</button>}
             {onBranch && <button onClick={action(onBranch)} className={itemClass}><GitBranch className="w-4 h-4" />从这里开启分支</button>}
             {onRecall && <button onClick={action(onRecall)} className={itemClass}><Undo2 className="w-4 h-4" />撤回</button>}

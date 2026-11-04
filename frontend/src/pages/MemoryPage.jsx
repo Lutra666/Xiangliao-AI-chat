@@ -63,7 +63,7 @@ export default function MemoryPage() {
         {sessionId ? `当前会话：${sessionTitle || '未命名会话'}` : '请先选择一个会话，再查看它的记忆。'}
       </p>
       {memoryPausedAfterRecall && <p className="max-w-2xl mx-auto px-4 pt-2 text-sm text-text-muted">
-        本会话撤回过消息；为避免旧记忆包含撤回内容，记忆仍可查看和编辑，但不会用于回复或自动提取。
+        本会话的旧记忆可能缺少来源；系统只会使用来源可确认且未失效的记忆。新记忆会记录来源。
       </p>}
       {sessionId && (
         <form className="max-w-2xl mx-auto px-4 pt-4 flex flex-col gap-2" onSubmit={(event) => {
@@ -184,6 +184,7 @@ export default function MemoryPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3 mt-2 ml-8">
+                      <span className="text-[10px] text-text-subtle">{!mem.source_known ? '来源未知' : mem.source_message_ids?.length ? `来自 ${mem.source_message_ids.length} 条消息` : '手动添加'}{mem.usable ? '' : ' · 已暂停使用'}</span>
                       <span className="text-[10px] px-2 py-0.5 bg-surface-hover rounded-full text-text-muted">
                         {CAT_NAMES[mem.category]}
                       </span>

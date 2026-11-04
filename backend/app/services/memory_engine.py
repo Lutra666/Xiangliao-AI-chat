@@ -11,6 +11,7 @@
 核心原则：只记有价值的信息，不浪费存储和 token。
 """
 import asyncio
+import hashlib
 import json
 import logging
 import math
@@ -20,7 +21,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from ..models import Memory, UserSettings
+from ..models import Memory, UserSettings, MemoryProvenance, ChatSession, ChatMessage
 from .embedding import embed
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,23 @@ class MemoryEngine:
         self._get_db = db_session_factory
         self._extract_counts: dict[tuple[int, int], int] = {}
 
+    @staticmethod
+    def _safe_memories(db, user_id, session_id, memories):
+        session = db.query(ChatSession).filter_by(id=session_id, user_id=user_id).first()
+        if not session or not (session.parameters or {}).get('_recall_context_guard'):
+            return memories
+        ids = [m.id for m in memories]
+        records = {p.memory_id: p.sources for p in db.query(MemoryProvenance).filter(MemoryProvenance.memory_id.in_(ids)).all()} if ids else {}
+        source_ids = {item['id'] for sources in records.values() for item in (sources or [])}
+        messages = {m.id: m for m in db.query(ChatMessage).filter(ChatMessage.session_id == session_id, ChatMessage.id.in_(source_ids)).all()} if source_ids else {}
+        def safe(mem):
+            if mem.id not in records:
+                return False
+            return all(item['id'] in messages and not (messages[item['id']].metadata_ or {}).get('recalled')
+                       and hashlib.sha256(messages[item['id']].content.encode()).hexdigest() == item['hash']
+                       for item in records[mem.id])
+        return [mem for mem in memories if safe(mem)]
+
     # ═══════════════════════════════════════════════════════
     # 记忆提取
     # ═══════════════════════════════════════════════════════
@@ -117,6 +135,7 @@ class MemoryEngine:
                     .limit(50)
                     .all()
                 )
+                existing_mems = self._safe_memories(db_preview, user_id, session_id, existing_mems)
                 if existing_mems:
                     existing_memories_text = "\n".join([
                         f"- {m.content}" for m in existing_mems
@@ -159,7 +178,12 @@ class MemoryEngine:
                 # 用向量相似度检查是否与已有记忆重复（中文也准确）
                 if self._is_duplicate(db, user_id, session_id, mem["content"], vec):
                     continue
-                stored.append(self._store_memory(db, user_id, session_id, mem, vec))
+                record = self._store_memory(db, user_id, session_id, mem, vec)
+                source = [{'id': m['id'], 'hash': hashlib.sha256(m['content'].encode()).hexdigest()}
+                          for m in recent if m.get('id') is not None]
+                if source:
+                    db.add(MemoryProvenance(memory_id=record['id'], sources=source))
+                stored.append(record)
             db.commit()
 
             # 每隔一定次数自动整理记忆（合并相似 / 清理过期 / 控制上限）
@@ -213,6 +237,7 @@ class MemoryEngine:
                 .all()
             )
 
+            memories = self._safe_memories(db, user_id, session_id, memories)
             if not memories:
                 return []
 
@@ -303,6 +328,9 @@ class MemoryEngine:
             if category:
                 q = q.filter(Memory.category == category)
             memories = q.order_by(Memory.importance.desc(), Memory.created_at.desc()).limit(200).all()
+            safe_ids = {m.id for m in self._safe_memories(db, user_id, session_id, memories)}
+            ids = [m.id for m in memories]
+            provenance = {p.memory_id: p.sources for p in db.query(MemoryProvenance).filter(MemoryProvenance.memory_id.in_(ids)).all()} if ids else {}
             return [
                 {
                     "id": m.id,
@@ -311,6 +339,9 @@ class MemoryEngine:
                     "importance": m.importance,
                     "access_count": m.access_count or 0,
                     "created_at": m.created_at.isoformat() if m.created_at else None,
+                    "source_message_ids": [source['id'] for source in provenance.get(m.id, [])],
+                    "source_known": m.id in provenance,
+                    "usable": m.id in safe_ids,
                 }
                 for m in memories
             ]
@@ -408,6 +439,15 @@ class MemoryEngine:
                 if merged_into is not None:
                     # 合并：保留较新的、更新重要度
                     existing = merged_into
+                    left_source = db.get(MemoryProvenance, existing.id)
+                    right_source = db.get(MemoryProvenance, mem.id)
+                    if left_source and right_source:
+                        combined = {item['id']: item for item in (left_source.sources or []) + (right_source.sources or [])}
+                        left_source.sources = list(combined.values())
+                    elif left_source:
+                        db.delete(left_source)  # 任一来源未知时，合并结果也视为未知。
+                    if right_source:
+                        db.delete(right_source)
                     existing.importance = max((existing.importance or 0.5), (mem.importance or 0.5))
                     existing.access_count = (existing.access_count or 0) + (mem.access_count or 0)
                     # 保留更详细的content
@@ -537,6 +577,7 @@ class MemoryEngine:
             .all()
         )
 
+        existing = self._safe_memories(db, user_id, session_id, existing)
         for mem in existing:
             # 快速指纹匹配
             if self._content_key(mem.content) == key:

@@ -1,7 +1,7 @@
 {
   "name": "xiangliao",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "享聊 - AI 即时聊天软件，DeepSeek 驱动，长记忆、多角色、省Token",
   "type": "module",
   "main": "electron/main.cjs",

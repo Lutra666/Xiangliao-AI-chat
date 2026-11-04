@@ -149,6 +149,13 @@ class Memory(Base):
     )
 
 
+class MemoryProvenance(Base):
+    """记忆来源；空列表表示用户手动添加，缺少记录表示来源未知。"""
+    __tablename__ = 'memory_provenance'
+    memory_id = Column(Integer, ForeignKey('memories.id', ondelete='CASCADE'), primary_key=True)
+    sources = Column(JSON, nullable=False)
+
+
 class UserSettings(Base):
     """用户设置表"""
     __tablename__ = "user_settings"

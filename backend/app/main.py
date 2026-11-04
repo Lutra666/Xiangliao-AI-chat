@@ -212,6 +212,8 @@ app.include_router(chat.router, prefix="/api/chat", tags=["对话"])
 app.include_router(characters.router, prefix="/api/characters", tags=["角色"])
 app.include_router(settings.router, prefix="/api/settings", tags=["设置"])
 app.include_router(memory.router, prefix="/api/memory", tags=["记忆"])
+from .routers import story
+app.include_router(story.router, prefix="/api/story", tags=["剧情"])
 
 
 @app.get("/api/health", summary="健康检查")

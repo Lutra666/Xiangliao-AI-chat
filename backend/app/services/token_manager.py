@@ -16,18 +16,12 @@ SUMMARY_KEEP_MSGS = 10      # 摘要后保留最近 N 条原文消息
 SUMMARY_TOKEN_BUDGET = 600  # 摘要本身的大致 token 预算（max_tokens）
 
 DEFAULT_FORMAT_PROMPT = (
-    "【角色一致性】始终保持角色设定中的性格、语气和行为方式，不要脱离角色。"
-    "记住之前的对话内容和用户透露的信息，保持上下文连贯。"
-    "\n\n【字数规则】每次回复控制在 200-500 字，对话场景可短至 50-100 字。"
-    "\n\n【格式要求】"
-    "\n- 角色说的话用中文双引号\u201c\u201d括起来，如：\u201c你好呀\u201d"
-    "\n- 动作、神态、心理描写用中文全角括号（）括起来，如：（微微一笑）"
-    "\n- 旁白和叙述正常书写，不要用引号包裹整段回复"
-    "\n- 自然分段，一个动作或一句话一段，不要把所有内容挤在一段里"
-    "\n\n【互动要求】"
-    "\n- 主动推进对话，不要只是被动回应"
-    "\n- 根据语境自然切换语气（撒娇/认真/害羞/开心）"
-    "\n- 回复要有情感温度，像真实的人在与对方交流"
+    "【自然交流】保持角色独特的性格、语气和经历，像正在认真与对方交流一样回应。"
+    "留意对方的情绪和具体话语，结合当前场景表达关心、喜悦、犹豫或幽默，不必每次都追问。"
+    "回应应有细节和变化，避免客服腔、模板句、重复夸奖和过度热情。"
+    "尊重角色与剧情的一致性，不替用户决定感受、行动或台词，不编造未发生的共同经历。"
+    "\n\n【表达方式】日常聊天自然简洁；剧情需要时适量加入动作、神态和环境，"
+    "让情绪体现在具体反应里，不要强制每句都加动作或固定格式。回复长短随对话节奏变化。"
 )
 
 
@@ -58,7 +52,7 @@ def estimate_messages_tokens(messages):
 
 def build_system_prompt(character_prompt=None, response_prompt=""):
     # response_prompt 放最后：LLM 对靠后的指令权重更高，确保用户指令优先于角色人设
-    fmt = response_prompt if response_prompt else DEFAULT_FORMAT_PROMPT
+    fmt = DEFAULT_FORMAT_PROMPT + ("\n\n【用户偏好】" + response_prompt if response_prompt else "")
     if character_prompt:
         return character_prompt + "\n\n---\n\n" + fmt
     return fmt + "\n\nyou are XiangLiao, a warm AI companion."
@@ -169,13 +163,17 @@ async def build_optimized_context(db, user_id, session_id, current_question,
     if user_name:
         system_content = system_content.replace("{{user_name}}", user_name)
 
+    params = session.parameters or {} if session else {}
+    if params.get('_story_summary') and (not recall_guard or params.get('_story_summary_verified')):
+        system_content += '\n\n【剧情小结】\n' + params['_story_summary']
+
     # inject 已有摘要（替代较早的对话历史）
     if summary_text and result["had_summary"]:
         system_content += f"\n\n---\n\n【之前对话摘要】（用于了解上下文）\n{summary_text}"
 
     # inject memories (if memory engine available)
     injected_memories = []
-    if memory_engine and not recall_guard:
+    if memory_engine:
         try:
             memories = await memory_engine.retrieve_relevant(
                 user_id=user_id,
@@ -208,8 +206,13 @@ async def build_optimized_context(db, user_id, session_id, current_question,
 
     messages = [{"role": "system", "content": system_content}]
 
+    by_id = {m.id: m for m in all_msgs}
     for m in recent:
-        messages.append({"role": m.role, "content": m.content})
+        content = m.content
+        quoted = by_id.get((m.metadata_ or {}).get('quote_id'))
+        if quoted:
+            content = f"引用的消息：\n{quoted.content}\n\n用户回复：\n{content}"
+        messages.append({"role": m.role, "content": content})
 
     messages.append({"role": "user", "content": current_question})
 

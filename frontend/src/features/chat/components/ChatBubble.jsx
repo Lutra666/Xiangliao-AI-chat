@@ -21,6 +21,11 @@ function ChatBubble({
   onEditSubmit,
   onBranch,
   onRecall,
+  onQuote,
+  onBookmark,
+  onContinue,
+  metadata,
+  onSelectVersion,
   messageIndex,
 }) {
   const [showSources, setShowSources] = useState(false);
@@ -201,11 +206,21 @@ function ChatBubble({
               onDelete={onDelete}
               onBranch={onBranch}
               onRecall={onRecall}
+              onQuote={onQuote}
+              onBookmark={onBookmark}
+              onContinue={onContinue}
+              bookmarked={!!metadata?.bookmark}
               canEdit={canEdit}
               menuOpen={menuOpen}
               onClose={closeMenu}
             />
           )}
+
+          {metadata?.versions?.length > 1 && <div className="mt-1 flex items-center gap-2 text-xs text-text-muted">
+            <button disabled={(metadata.version_index ?? 0) === 0} onClick={() => onSelectVersion((metadata.version_index ?? 0) - 1)} aria-label="上一个版本">‹</button>
+            <span>{(metadata.version_index ?? 0) + 1} / {metadata.versions.length}</span>
+            <button disabled={(metadata.version_index ?? 0) >= metadata.versions.length - 1} onClick={() => onSelectVersion((metadata.version_index ?? 0) + 1)} aria-label="下一个版本">›</button>
+          </div>}
 
           {/* 知识库溯源 */}
           {!isUser && sources && sources.length > 0 && (
